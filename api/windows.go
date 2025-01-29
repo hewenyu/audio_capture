@@ -3,8 +3,8 @@
 package api
 
 /*
-#cgo CXXFLAGS: -std=c++11
-#cgo LDFLAGS: -L${SRCDIR}/../build -lwasapi_capture -lole32 -loleaut32 -lwinmm -luuid
+#cgo CXXFLAGS: -std=c++11 -DWIN32_LEAN_AND_MEAN
+#cgo LDFLAGS: -L${SRCDIR}/../build -lwasapi_capture -lole32 -loleaut32 -lwinmm -luuid -ladvapi32
 #include "../c/windows/wasapi_capture.h"
 */
 import "C"
