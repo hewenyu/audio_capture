@@ -28,7 +28,8 @@ public:
         session_manager_(nullptr),
         is_initialized_(false),
         callback_(nullptr),
-        user_data_(nullptr) {
+        user_data_(nullptr),
+        mix_format_(nullptr) {
         CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     }
 
@@ -40,35 +41,39 @@ public:
     bool initialize() {
         if (is_initialized_) return true;
 
-        HRESULT hr = CoCreateInstance(
-            CLSID_MMDeviceEnumerator, nullptr,
-            CLSCTX_ALL, IID_IMMDeviceEnumerator,
-            (void**)&device_enumerator_
-        );
-        if (FAILED(hr)) return false;
+        // 如果audio_client_还没初始化（在get_format中可能已经初始化了）
+        if (!audio_client_) {
+            HRESULT hr = CoCreateInstance(
+                CLSID_MMDeviceEnumerator, nullptr,
+                CLSCTX_ALL, IID_IMMDeviceEnumerator,
+                (void**)&device_enumerator_
+            );
+            if (FAILED(hr)) return false;
 
-        hr = device_enumerator_->GetDefaultAudioEndpoint(
-            eRender, eConsole, &audio_device_
-        );
-        if (FAILED(hr)) return false;
+            hr = device_enumerator_->GetDefaultAudioEndpoint(
+                eRender, eConsole, &audio_device_
+            );
+            if (FAILED(hr)) return false;
 
-        hr = audio_device_->Activate(
-            IID_IAudioClient, CLSCTX_ALL,
-            nullptr, (void**)&audio_client_
-        );
-        if (FAILED(hr)) return false;
+            hr = audio_device_->Activate(
+                IID_IAudioClient, CLSCTX_ALL,
+                nullptr, (void**)&audio_client_
+            );
+            if (FAILED(hr)) return false;
+        }
 
-        WAVEFORMATEX* mix_format;
-        hr = audio_client_->GetMixFormat(&mix_format);
-        if (FAILED(hr)) return false;
+        // 使用已保存的格式初始化
+        if (!mix_format_) {
+            HRESULT hr = audio_client_->GetMixFormat(&mix_format_);
+            if (FAILED(hr)) return false;
+        }
 
         // 初始化音频客户端
-        hr = audio_client_->Initialize(
+        HRESULT hr = audio_client_->Initialize(
             AUDCLNT_SHAREMODE_SHARED,
             AUDCLNT_STREAMFLAGS_LOOPBACK,
-            0, 0, mix_format, nullptr
+            0, 0, mix_format_, nullptr
         );
-        CoTaskMemFree(mix_format);
         if (FAILED(hr)) return false;
 
         hr = audio_client_->GetService(
@@ -171,6 +176,86 @@ public:
         return count;
     }
 
+    bool start_process(unsigned int target_pid) {
+        if (!session_manager_) {
+            HRESULT hr = audio_device_->Activate(
+                __uuidof(IAudioSessionManager2),
+                CLSCTX_ALL,
+                nullptr,
+                (void**)&session_manager_
+            );
+            if (FAILED(hr)) return false;
+        }
+
+        IAudioSessionEnumerator* session_enumerator = nullptr;
+        HRESULT hr = session_manager_->GetSessionEnumerator(&session_enumerator);
+        if (FAILED(hr)) return false;
+
+        int session_count = 0;
+        session_enumerator->GetCount(&session_count);
+
+        for (int i = 0; i < session_count; i++) {
+            IAudioSessionControl* session_control = nullptr;
+            hr = session_enumerator->GetSession(i, &session_control);
+            if (FAILED(hr)) continue;
+
+            IAudioSessionControl2* session_control2 = nullptr;
+            hr = session_control->QueryInterface(__uuidof(IAudioSessionControl2), (void**)&session_control2);
+            session_control->Release();
+            if (FAILED(hr)) continue;
+
+            DWORD process_id;
+            hr = session_control2->GetProcessId(&process_id);
+            if (SUCCEEDED(hr) && process_id == target_pid) {
+                session_control2->Release();
+                session_enumerator->Release();
+                return start(); // 使用现有的start方法开始捕获
+            }
+            session_control2->Release();
+        }
+
+        session_enumerator->Release();
+        return false;
+    }
+
+    bool get_format(AudioFormat* format) {
+        if (!audio_client_) {
+            // 如果audio_client_还没初始化，先创建它
+            HRESULT hr = CoCreateInstance(
+                CLSID_MMDeviceEnumerator, nullptr,
+                CLSCTX_ALL, IID_IMMDeviceEnumerator,
+                (void**)&device_enumerator_
+            );
+            if (FAILED(hr)) return false;
+
+            hr = device_enumerator_->GetDefaultAudioEndpoint(
+                eRender, eConsole, &audio_device_
+            );
+            if (FAILED(hr)) return false;
+
+            hr = audio_device_->Activate(
+                IID_IAudioClient, CLSCTX_ALL,
+                nullptr, (void**)&audio_client_
+            );
+            if (FAILED(hr)) return false;
+        }
+
+        WAVEFORMATEX* mix_format;
+        HRESULT hr = audio_client_->GetMixFormat(&mix_format);
+        if (FAILED(hr)) return false;
+
+        format->sample_rate = mix_format->nSamplesPerSec;
+        format->channels = mix_format->nChannels;
+        format->bits_per_sample = mix_format->wBitsPerSample;
+
+        // 保存格式供后续使用
+        if (mix_format_) {
+            CoTaskMemFree(mix_format_);
+        }
+        mix_format_ = mix_format;
+        return true;
+    }
+
 private:
     static DWORD WINAPI capture_thread_proc(LPVOID param) {
         auto* capture = static_cast<WasapiCapture*>(param);
@@ -231,6 +316,10 @@ private:
             session_manager_->Release();
             session_manager_ = nullptr;
         }
+        if (mix_format_) {
+            CoTaskMemFree(mix_format_);
+            mix_format_ = nullptr;
+        }
         is_initialized_ = false;
     }
 
@@ -244,6 +333,7 @@ private:
     audio_callback callback_;
     void* user_data_;
     IAudioSessionManager2* session_manager_;
+    WAVEFORMATEX* mix_format_;
 };
 
 // C接口实现
@@ -281,6 +371,16 @@ void wasapi_capture_set_callback(void* handle, audio_callback callback, void* us
 int wasapi_capture_get_applications(void* handle, AudioAppInfo* apps, int max_count) {
     auto* capture = static_cast<WasapiCapture*>(handle);
     return capture->get_applications(apps, max_count);
+}
+
+int wasapi_capture_start_process(void* handle, unsigned int pid) {
+    auto* capture = static_cast<WasapiCapture*>(handle);
+    return capture->start_process(pid) ? 1 : 0;
+}
+
+int wasapi_capture_get_format(void* handle, AudioFormat* format) {
+    auto* capture = static_cast<WasapiCapture*>(handle);
+    return capture->get_format(format) ? 1 : 0;
 }
 
 } 

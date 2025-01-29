@@ -19,6 +19,13 @@ typedef struct {
     wchar_t name[260]; // 使用 260 替代 MAX_PATH
 } AudioAppInfo;
 
+// 音频格式结构体
+typedef struct {
+    unsigned int sample_rate;
+    unsigned int channels;
+    unsigned int bits_per_sample;
+} AudioFormat;
+
 void* wasapi_capture_create();
 void wasapi_capture_destroy(void* handle);
 int wasapi_capture_initialize(void* handle);
@@ -28,6 +35,12 @@ void wasapi_capture_set_callback(void* handle, audio_callback callback, void* us
 
 // 新增：获取应用程序列表
 int wasapi_capture_get_applications(void* handle, AudioAppInfo* apps, int max_count);
+
+// 在现有函数声明后添加
+int wasapi_capture_start_process(void* handle, unsigned int pid);
+
+// 添加获取格式的函数声明
+int wasapi_capture_get_format(void* handle, AudioFormat* format);
 
 #ifdef __cplusplus
 }

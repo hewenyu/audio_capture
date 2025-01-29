@@ -32,6 +32,9 @@ type AudioCapture interface {
 
 	// Cleanup 清理资源
 	Cleanup()
+
+	// StartCapturingProcess 开始录制指定进程的音频
+	StartCapturingProcess(pid uint32) error
 }
 
 // NewAudioCapture 创建平台相关的音频捕获实例
