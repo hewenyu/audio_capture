@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/hewenyu/audio_capture/api"
 )
@@ -27,14 +26,14 @@ func main() {
 		fmt.Printf("PID: %d, Name: %s\n", pid, name)
 	}
 
-	err = capture.Start()
-	if err != nil {
-		fmt.Printf("Failed to start: %v\n", err)
-		return
-	}
+	// err = capture.Start()
+	// if err != nil {
+	// 	fmt.Printf("Failed to start: %v\n", err)
+	// 	return
+	// }
 
-	// 录制5秒
-	time.Sleep(5 * time.Second)
+	// // 录制5秒
+	// time.Sleep(5 * time.Second)
 
-	capture.Stop()
+	// capture.Stop()
 }

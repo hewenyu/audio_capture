@@ -1,6 +1,10 @@
 @echo off
 setlocal enabledelayedexpansion
 
+:: 获取脚本所在目录
+set "SCRIPT_DIR=%~dp0"
+cd /d "%SCRIPT_DIR%"
+
 :: 检查是否安装了Go
 where go >nul 2>nul
 if %ERRORLEVEL% neq 0 (
@@ -23,12 +27,22 @@ set CXX=%MSYS2_UCRT64_PATH%\bin\g++.exe
 :: 创建输出目录
 if not exist "build" mkdir build
 
+:: 检查源文件是否存在
+if not exist "c\windows\wasapi_capture.cpp" (
+    echo Error: Source file c\windows\wasapi_capture.cpp not found
+    echo Current directory: %CD%
+    exit /b 1
+)
+
 :: 编译C++代码
 echo Building C++ code...
-%CXX% -c -o build/wasapi_capture.o c/windows/wasapi_capture.cpp ^
-    -I. -std=c++11 -DWIN32_LEAN_AND_MEAN ^
-    -mwindows -municode ^
-    -I%MSYS2_UCRT64_PATH%/include
+%CXX% -c -o "%SCRIPT_DIR%build/wasapi_capture.o" "%SCRIPT_DIR%c/windows/wasapi_capture.cpp" ^
+    -I"%SCRIPT_DIR%" ^
+    -I"%MSYS2_UCRT64_PATH%/include" ^
+    -std=c++11 ^
+    -DWIN32_LEAN_AND_MEAN ^
+    -DINITGUID ^
+    -mwindows -municode
 
 if %ERRORLEVEL% neq 0 (
     echo Error: Failed to compile C++ code
@@ -37,7 +51,10 @@ if %ERRORLEVEL% neq 0 (
 
 :: 创建静态库
 echo Creating static library...
-ar rcs build/libwasapi_capture.a build/wasapi_capture.o
+%CXX% -shared -static -o "%SCRIPT_DIR%build/libwasapi_capture.dll" "%SCRIPT_DIR%build/wasapi_capture.o" ^
+    -Wl,--out-implib,"%SCRIPT_DIR%build/libwasapi_capture.a" ^
+    -lole32 -loleaut32 -lwinmm -luuid -lstdc++ -ladvapi32
+
 if %ERRORLEVEL% neq 0 (
     echo Error: Failed to create static library
     exit /b 1
@@ -45,7 +62,7 @@ if %ERRORLEVEL% neq 0 (
 
 :: 编译Go代码
 echo Building Go code...
-go build -o build/audio_capture.exe ./examples/main.go
+go build -o "%SCRIPT_DIR%build/audio_capture.exe" ./examples/main.go
 if %ERRORLEVEL% neq 0 (
     echo Error: Failed to build Go code
     exit /b 1
