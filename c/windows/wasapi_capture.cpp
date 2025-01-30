@@ -41,46 +41,31 @@ public:
     bool initialize() {
         if (is_initialized_) return true;
 
-        // 如果audio_client_还没初始化（在get_format中可能已经初始化了）
-        if (!audio_client_) {
-            HRESULT hr = CoCreateInstance(
-                CLSID_MMDeviceEnumerator, nullptr,
-                CLSCTX_ALL, IID_IMMDeviceEnumerator,
-                (void**)&device_enumerator_
-            );
-            if (FAILED(hr)) return false;
-
-            hr = device_enumerator_->GetDefaultAudioEndpoint(
-                eRender, eConsole, &audio_device_
-            );
-            if (FAILED(hr)) return false;
-
-            hr = audio_device_->Activate(
-                IID_IAudioClient, CLSCTX_ALL,
-                nullptr, (void**)&audio_client_
-            );
-            if (FAILED(hr)) return false;
+        // 确保已经获取了音频格式
+        AudioFormat format;
+        if (!get_format(&format)) {
+            return false;
         }
 
-        // 使用已保存的格式初始化
-        if (!mix_format_) {
-            HRESULT hr = audio_client_->GetMixFormat(&mix_format_);
-            if (FAILED(hr)) return false;
-        }
-
-        // 初始化音频客户端
+        // 初始化音频客户端 - 使用原始格式
         HRESULT hr = audio_client_->Initialize(
             AUDCLNT_SHAREMODE_SHARED,
             AUDCLNT_STREAMFLAGS_LOOPBACK,
             0, 0, mix_format_, nullptr
         );
-        if (FAILED(hr)) return false;
+        if (FAILED(hr)) {
+            std::cerr << "Failed to initialize audio client: 0x" << std::hex << hr << std::endl;
+            return false;
+        }
 
         hr = audio_client_->GetService(
             IID_IAudioCaptureClient,
             (void**)&capture_client_
         );
-        if (FAILED(hr)) return false;
+        if (FAILED(hr)) {
+            std::cerr << "Failed to get capture client: 0x" << std::hex << hr << std::endl;
+            return false;
+        }
 
         is_initialized_ = true;
         return true;
@@ -240,19 +225,16 @@ public:
             if (FAILED(hr)) return false;
         }
 
-        WAVEFORMATEX* mix_format;
-        HRESULT hr = audio_client_->GetMixFormat(&mix_format);
-        if (FAILED(hr)) return false;
-
-        format->sample_rate = mix_format->nSamplesPerSec;
-        format->channels = mix_format->nChannels;
-        format->bits_per_sample = mix_format->wBitsPerSample;
-
-        // 保存格式供后续使用
-        if (mix_format_) {
-            CoTaskMemFree(mix_format_);
+        if (!mix_format_) {
+            HRESULT hr = audio_client_->GetMixFormat(&mix_format_);
+            if (FAILED(hr)) return false;
         }
-        mix_format_ = mix_format;
+
+        // 返回目标格式（16kHz，单声道，16位）
+        format->sample_rate = 16000;
+        format->channels = 1;
+        format->bits_per_sample = 16;
+
         return true;
     }
 
@@ -264,6 +246,9 @@ private:
 
     DWORD capture_proc() {
         stop_capture_ = false;
+        float* resample_buffer = nullptr;
+        size_t resample_buffer_size = 0;
+
         while (!stop_capture_) {
             UINT32 packet_length = 0;
             HRESULT hr = capture_client_->GetNextPacketSize(&packet_length);
@@ -278,19 +263,59 @@ private:
             UINT32 frames;
             DWORD flags;
 
-            hr = capture_client_->GetBuffer(
-                &data, &frames,
-                &flags, nullptr, nullptr
-            );
+            hr = capture_client_->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
             if (FAILED(hr)) break;
 
             if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT) && callback_) {
-                callback_(user_data_, (float*)data, frames);
+                float* audio_data = (float*)data;
+                int channels = mix_format_->nChannels;
+                int original_sample_rate = mix_format_->nSamplesPerSec;
+                
+                // 计算重采样后的帧数
+                int resampled_frames = (int)((float)frames * 16000 / original_sample_rate);
+                
+                // 确保重采样缓冲区足够大
+                if (resample_buffer_size < resampled_frames) {
+                    delete[] resample_buffer;
+                    resample_buffer_size = resampled_frames;
+                    resample_buffer = new float[resample_buffer_size];
+                }
+
+                // 首先转换为单声道
+                float* mono_data = new float[frames];
+                for (UINT32 i = 0; i < frames; i++) {
+                    float sum = 0;
+                    for (int ch = 0; ch < channels; ch++) {
+                        sum += audio_data[i * channels + ch];
+                    }
+                    mono_data[i] = sum / channels;
+                }
+
+                // 线性插值重采样到16kHz
+                for (int i = 0; i < resampled_frames; i++) {
+                    float position = (float)i * original_sample_rate / 16000;
+                    int index = (int)position;
+                    float fraction = position - index;
+
+                    if (index >= frames - 1) {
+                        resample_buffer[i] = mono_data[frames - 1];
+                    } else {
+                        resample_buffer[i] = mono_data[index] * (1 - fraction) + 
+                                           mono_data[index + 1] * fraction;
+                    }
+                }
+
+                // 调用回调函数
+                callback_(user_data_, resample_buffer, resampled_frames);
+                
+                delete[] mono_data;
             }
 
             hr = capture_client_->ReleaseBuffer(frames);
             if (FAILED(hr)) break;
         }
+
+        delete[] resample_buffer;
         return 0;
     }
 

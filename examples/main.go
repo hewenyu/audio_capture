@@ -45,12 +45,11 @@ func main() {
 	fmt.Printf("Found Microsoft Edge (PID: %d)\n", edgePID)
 
 	// 创建WAV文件写入器
-	format := capture.GetFormat()
 	wavWriter, err := utils.NewWavWriter(
 		fmt.Sprintf("edge_audio_%d.wav", time.Now().Unix()),
-		format.SampleRate,
-		format.Channels,
-		format.BitsPerSample,
+		16000, // 采样率固定为16kHz
+		1,     // 单声道
+		16,    // 16位深度
 	)
 	if err != nil {
 		fmt.Printf("Failed to create WAV file: %v\n", err)

@@ -71,31 +71,26 @@ func goAudioCallback(userData unsafe.Pointer, buffer *C.float, frames C.int) {
 }
 
 func (w *windowsAudioCapture) Initialize() error {
-	w.handle = C.wasapi_capture_create()
-	if w.handle == nil {
+	handle := C.wasapi_capture_create()
+	if handle == nil {
 		return fmt.Errorf("failed to create wasapi capture")
 	}
+	w.handle = handle
 
-	// 获取音频格式
+	if C.wasapi_capture_initialize(handle) == 0 {
+		return fmt.Errorf("failed to initialize wasapi capture")
+	}
+
+	// 获取格式信息
 	var format C.AudioFormat
-	if C.wasapi_capture_get_format(w.handle, &format) == 0 {
-		C.wasapi_capture_destroy(w.handle)
-		w.handle = nil
+	if C.wasapi_capture_get_format(handle, &format) == 0 {
 		return fmt.Errorf("failed to get audio format")
 	}
 
-	// 保存格式信息
 	w.format = audioFormat{
 		sampleRate:    int(format.sample_rate),
 		channels:      int(format.channels),
 		bitsPerSample: int(format.bits_per_sample),
-	}
-
-	// 初始化音频客户端
-	if C.wasapi_capture_initialize(w.handle) == 0 {
-		C.wasapi_capture_destroy(w.handle)
-		w.handle = nil
-		return fmt.Errorf("failed to initialize wasapi capture")
 	}
 
 	// 注册到全局回调映射
