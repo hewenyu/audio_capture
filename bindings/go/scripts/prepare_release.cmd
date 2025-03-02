@@ -10,16 +10,19 @@ if not exist pkg\audio\lib\windows_amd64 mkdir pkg\audio\lib\windows_amd64
 echo 编译WASAPI捕获库...
 pushd ..\..\c\windows
 mingw32-make clean
-mingw32-make
+mingw32-make -C ..\..\c\windows
 if errorlevel 1 (
     echo 编译失败！
     popd
     exit /b 1
 )
 
+:: 返回bindings\go
+pushd ..\..\bindings\go
+
 :: 复制预编译的二进制文件
 echo 复制预编译的二进制文件...
-copy /Y ..\..\build\windows\libwasapi_capture.a pkg\audio\lib\windows_amd64\
+copy /Y ..\..\build\windows\*.a pkg\audio\lib\windows_amd64\
 if errorlevel 1 (
     echo 复制失败！
     popd
