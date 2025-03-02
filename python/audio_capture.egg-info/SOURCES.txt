@@ -1,0 +1,13 @@
+MANIFEST.in
+README.md
+pyproject.toml
+setup.py
+audio_capture/__init__.py
+audio_capture/capture.py
+audio_capture/utils.py
+audio_capture.egg-info/PKG-INFO
+audio_capture.egg-info/SOURCES.txt
+audio_capture.egg-info/dependency_links.txt
+audio_capture.egg-info/requires.txt
+audio_capture.egg-info/top_level.txt
+audio_capture/binaries/windows/wasapi_capture.dll

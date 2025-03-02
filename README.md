@@ -2,60 +2,35 @@
 
 一个强大的跨平台音频捕获库，支持 Windows 和 Linux 系统，用于 Go 语言开发。该库允许捕获系统音频或特定应用程序的音频输出。
 
+## 特性
+
+- 零依赖安装：无需安装任何额外的开发环境或依赖
+- 跨平台支持：
+  - Windows: 使用 WASAPI (Windows Audio Session API)
+  - Linux: 使用 PulseAudio
+- 音频捕获功能：
+  - 支持系统全局音频捕获
+  - 支持特定应用程序音频捕获
+  - 实时音频数据回调
+  - 可配置的音频格式（采样率、声道数、位深度）
+- 工具支持：
+  - WAV 文件写入工具
+  - 音频格式转换
+- 应用程序管理：
+  - 列出正在播放音频的应用程序
+  - 按进程 ID 选择要捕获的应用程序
+
 ## 快速开始
 
-### 1. 安装
+### 安装
 
-#### 方法一：直接使用
+只需一行命令即可安装：
+
 ```bash
 go get github.com/hewenyu/audio_capture@latest
 ```
 
-#### 方法二：从源码构建
-
-1. 克隆仓库：
-```bash
-git clone https://github.com/hewenyu/audio_capture.git
-cd audio_capture
-```
-
-2. 使用 Make 构建：
-```bash
-# 显示所有可用命令
-make help
-
-# 构建当前平台的库
-make
-
-# 构建并安装
-make install
-
-# 构建示例程序
-make example
-```
-
-特定平台构建：
-```bash
-# Windows
-make windows
-
-# Linux
-make linux
-```
-
-### 2. 下载预编译文件
-
-为了简化使用，我们提供了预编译的动态库文件：
-
-#### Windows
-1. 从 [Releases](https://github.com/hewenyu/audio_capture/releases) 下载最新的 `wasapi_capture.dll`
-2. 将 `wasapi_capture.dll` 放到你的应用程序目录下
-
-#### Linux
-1. 从 [Releases](https://github.com/hewenyu/audio_capture/releases) 下载最新的 `libpulse_capture.so`
-2. 将 `libpulse_capture.so` 放到 `/usr/lib` 或应用程序目录下
-
-### 3. 简单示例
+### 基本用法
 
 ```go
 package main
@@ -95,60 +70,7 @@ func main() {
 }
 ```
 
-## 功能特性
-
-- 跨平台支持
-  - Windows: 使用 WASAPI (Windows Audio Session API)
-  - Linux: 使用 PulseAudio
-- 音频捕获功能
-  - 支持系统全局音频捕获
-  - 支持特定应用程序音频捕获
-  - 实时音频数据回调
-  - 可配置的音频格式（采样率、声道数、位深度）
-- 工具支持
-  - WAV 文件写入工具
-  - 音频格式转换
-- 应用程序管理
-  - 列出正在播放音频的应用程序
-  - 按进程 ID 选择要捕获的应用程序
-
-## 系统要求
-
-### Windows
-- Windows 7 或更高版本
-- Go 1.21 或更高版本
-- C++ 编译器（支持 C++11）
-- Windows SDK
-
-### Linux
-- PulseAudio
-- Go 1.21 或更高版本
-- GCC
-
-## 安装
-
-```bash
-go get github.com/hewenyu/audio_capture
-```
-
-### Windows 依赖项
-确保系统已安装：
-- Visual Studio 或 MinGW（支持 C++11）
-- Windows SDK
-
-### Linux 依赖项
-安装 PulseAudio 开发库：
-```bash
-# Ubuntu/Debian
-sudo apt-get install libpulse-dev
-
-# CentOS/RHEL
-sudo yum install pulseaudio-libs-devel
-```
-
-## 使用示例
-
-### 基本用法
+### 录制到 WAV 文件
 
 ```go
 package main
@@ -194,7 +116,6 @@ func main() {
         return
     }
 
-    // 等待用户输入以停止录音
     fmt.Println("按回车键停止录音...")
     fmt.Scanln()
 
@@ -245,20 +166,40 @@ func main() {
 }
 ```
 
+## 系统要求
+
+- Go 1.21 或更高版本
+- Windows 7+ 或支持 PulseAudio 的 Linux 系统
+
 ## API 文档
 
 ### AudioCapture 接口
 
 ```go
 type AudioCapture interface {
-    Initialize() error                    // 初始化音频捕获
-    Start() error                        // 开始录音
-    Stop()                               // 停止录音
-    GetFormat() AudioFormat              // 获取音频格式
-    SetCallback(callback AudioCallback)   // 设置音频数据回调
-    ListApplications() map[uint32]string // 列出正在播放音频的应用
-    Cleanup()                            // 清理资源
-    StartCapturingProcess(pid uint32) error // 开始录制指定进程的音频
+    // Initialize 初始化音频捕获
+    Initialize() error
+
+    // Start 开始录音
+    Start() error
+
+    // Stop 停止录音
+    Stop()
+
+    // GetFormat 获取音频格式
+    GetFormat() AudioFormat
+
+    // SetCallback 设置音频数据回调
+    SetCallback(callback AudioCallback)
+
+    // ListApplications 列出正在播放音频的应用
+    ListApplications() map[uint32]string
+
+    // Cleanup 清理资源
+    Cleanup()
+
+    // StartCapturingProcess 开始录制指定进程的音频
+    StartCapturingProcess(pid uint32) error
 }
 ```
 
@@ -268,84 +209,20 @@ type AudioCapture interface {
 type AudioFormat struct {
     SampleRate    int // 采样率
     Channels      int // 声道数
-    BitsPerSample int // 采样位深
+    BitsPerSample int // 位深度
 }
 ```
+
+### AudioCallback 回调函数
+
+```go
+type AudioCallback func([]float32)
+```
+
+## 贡献
+
+欢迎提交 Pull Request 或创建 Issue。
 
 ## 许可证
 
 本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
-
-## 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
-## 注意事项
-
-1. Windows 平台需要管理员权限才能捕获其他应用程序的音频
-2. 在 Linux 上需要确保 PulseAudio 服务正在运行
-3. 高采样率和多声道可能会占用较多系统资源
-4. 建议在处理音频数据时使用缓冲区，避免数据丢失
-
-## 高级用法
-
-### 1. 捕获特定应用的音频
-
-```go
-// 列出正在播放音频的应用
-apps := capture.ListApplications()
-for pid, name := range apps {
-    fmt.Printf("%d: %s\n", pid, name)
-}
-
-// 捕获特定应用的音频
-if err := capture.StartCapturingProcess(12345); err != nil {
-    panic(err)
-}
-```
-
-### 2. 保存为WAV文件
-
-```go
-import "github.com/hewenyu/audio_capture/utils"
-
-// 创建WAV文件写入器
-wav, err := utils.NewWavWriter("output.wav", 44100, 2, 16)
-if err != nil {
-    panic(err)
-}
-defer wav.Close()
-
-// 设置回调保存音频
-capture.SetCallback(func(data []float32) {
-    if err := wav.WriteFloat32(data); err != nil {
-        fmt.Printf("写入WAV文件失败: %v\n", err)
-    }
-})
-```
-
-### 3. 获取音频格式
-
-```go
-format := capture.GetFormat()
-fmt.Printf("采样率: %d Hz\n", format.SampleRate)
-fmt.Printf("声道数: %d\n", format.Channels)
-fmt.Printf("位深度: %d bits\n", format.BitsPerSample)
-```
-
-## 目录结构
-
-```
-audio_capture/
-├── api/                # Go API 接口定义和实现
-│   ├── audio.go       # 核心接口定义
-│   ├── windows.go     # Windows 平台实现
-│   └── linux.go       # Linux 平台实现
-├── utils/             # 工具函数
-│   └── wav_writer.go  # WAV 文件写入工具
-├── examples/          # 使用示例
-│   └── main.go       # 示例程序
-└── c/                 # C/C++ 原生实现
-    ├── windows/      # Windows 平台 C++ 代码
-    └── linux/        # Linux 平台 C 代码
-```

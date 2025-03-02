@@ -13,7 +13,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 :: 设置MSYS2环境变量
-set MSYS2_PATH=D:\msys64
+set MSYS2_PATH=C:\msys64
 set MSYS2_UCRT64_PATH=%MSYS2_PATH%\ucrt64
 set PATH=%MSYS2_UCRT64_PATH%\bin;%PATH%
 
@@ -26,6 +26,7 @@ set CXX=%MSYS2_UCRT64_PATH%\bin\g++.exe
 
 :: 创建输出目录
 if not exist "build" mkdir build
+if not exist "api\binaries\windows" mkdir api\binaries\windows
 
 :: 检查源文件是否存在
 if not exist "c\windows\wasapi_capture.cpp" (
@@ -49,14 +50,23 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-:: 创建静态库
-echo Creating static library...
-%CXX% -shared -static -o "%SCRIPT_DIR%build/libwasapi_capture.dll" "%SCRIPT_DIR%build/wasapi_capture.o" ^
+:: 创建动态库
+echo Creating dynamic library...
+%CXX% -shared -static -o "%SCRIPT_DIR%build/wasapi_capture.dll" "%SCRIPT_DIR%build/wasapi_capture.o" ^
     -Wl,--out-implib,"%SCRIPT_DIR%build/libwasapi_capture.a" ^
     -lole32 -loleaut32 -lwinmm -luuid -lstdc++ -ladvapi32
 
 if %ERRORLEVEL% neq 0 (
-    echo Error: Failed to create static library
+    echo Error: Failed to create dynamic library
+    exit /b 1
+)
+
+:: 复制动态库到 binaries 目录
+echo Copying dynamic library to binaries directory...
+copy /Y "%SCRIPT_DIR%build\wasapi_capture.dll" "%SCRIPT_DIR%api\binaries\windows\"
+
+if %ERRORLEVEL% neq 0 (
+    echo Error: Failed to copy dynamic library
     exit /b 1
 )
 
@@ -69,6 +79,6 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo Build completed successfully!
-echo Output files are in the 'build' directory
+echo Output files are in the 'build' and 'api/binaries' directories
 
 endlocal 

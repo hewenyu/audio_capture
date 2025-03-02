@@ -28,3 +28,6 @@ go.work.sum
 build/
 
 *.wav
+
+
+.venv/
