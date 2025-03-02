@@ -22,17 +22,80 @@
   - Windows: MinGW-w64或Visual Studio
   - Go 1.21或更高版本（用于Go绑定）
 
+## 安装指南
+
+### Go模块安装（推荐）
+
+本库使用Go模块系统，可以直接通过`go get`命令安装：
+
+```bash
+# 安装最新版本
+go get github.com/hewenyu/audio_capture/bindings/go@latest
+```
+
+#### 预编译二进制文件
+
+为了简化安装过程，我们提供了预编译的二进制文件，包含在Go模块中：
+
+- Windows (x64): 包含WASAPI捕获库的预编译二进制文件
+- Linux (x64): 包含PulseAudio捕获库的预编译二进制文件（计划中）
+
+这意味着大多数用户无需手动编译C/C++代码，可以直接使用Go模块。
+
+#### 手动编译（可选）
+
+如果预编译的二进制文件不适合你的环境，或者你想自定义编译选项，可以手动编译：
+
+1. 克隆仓库：
+```bash
+git clone https://github.com/hewenyu/audio_capture.git
+cd audio_capture
+```
+
+2. 编译C/C++库：
+```bash
+# Windows
+cd c/windows
+mingw32-make
+```
+
+3. 编译Go绑定：
+```bash
+cd ../../bindings/go
+mingw32-make
+```
+
+### 在项目中使用
+
+在你的`go.mod`文件中添加依赖：
+
+```
+require github.com/hewenyu/audio_capture/bindings/go v0.1.0
+```
+
+或者使用`go mod tidy`自动添加依赖。
+
 ## 快速开始
 
 ### 使用Go绑定
 
-1. **安装**
+1. **创建一个新项目**
+
+```bash
+mkdir my_audio_app
+cd my_audio_app
+go mod init my_audio_app
+```
+
+2. **添加依赖**
 
 ```bash
 go get github.com/hewenyu/audio_capture/bindings/go
 ```
 
-2. **基本用法**
+3. **基本用法示例**
+
+创建`main.go`文件：
 
 ```go
 package main
@@ -71,7 +134,13 @@ func main() {
 }
 ```
 
-3. **捕获特定应用程序的音频**
+4. **运行程序**
+
+```bash
+go run main.go
+```
+
+### 捕获特定应用程序的音频
 
 ```go
 // 列出正在播放音频的应用
@@ -91,7 +160,7 @@ if err := capture.StartCapturingProcess(targetPID); err != nil {
 }
 ```
 
-4. **保存为WAV文件**
+### 保存为WAV文件
 
 ```go
 // 获取音频格式
@@ -115,11 +184,16 @@ capture.SetCallback(func(data []float32) {
 })
 ```
 
-### 示例应用
+### 完整示例应用
 
 项目包含一个完整的示例应用，可以捕获特定应用程序的音频并保存为WAV文件：
 
 ```bash
+# 克隆仓库（如果你还没有）
+git clone https://github.com/hewenyu/audio_capture.git
+cd audio_capture
+
+# 运行示例应用
 cd bindings/go/examples/app_capture
 go run main.go
 ```
@@ -157,37 +231,54 @@ audio_capture/
 
 库内部使用互斥锁确保线程安全。用户可以在多线程环境中安全使用该库。
 
-## 构建指南
-
-### Windows
-
-使用MinGW-w64构建：
-
-```bash
-cd c/windows
-mingw32-make
-```
-
-构建Go绑定：
-
-```bash
-cd bindings/go
-mingw32-make
-```
-
 ## 常见问题
 
-### 没有检测到音频
+### 安装问题
+
+#### CGO编译错误
+
+如果遇到CGO编译错误，请确保：
+
+1. 已安装MinGW-w64（Windows）或GCC（Linux）
+2. 环境变量中包含编译器路径
+3. 使用正确的构建标签（如果需要）
+
+#### 找不到预编译库
+
+如果Go无法找到预编译的库文件：
+
+1. 确保使用的是最新版本的模块
+2. 尝试手动编译（见上文"手动编译"部分）
+3. 检查是否有与你的操作系统/架构匹配的预编译库
+
+### 运行问题
+
+#### 没有检测到音频
 
 - 确保应用程序正在播放音频
 - 检查系统音量设置
 - 尝试捕获系统音频而不是特定应用程序
 
-### 回调函数未被调用
+#### 回调函数未被调用
 
 - 确保正确设置了回调函数
 - 检查是否成功调用了Start()方法
 - 查看日志输出以获取更多信息
+
+#### 权限问题
+
+在某些系统上，可能需要管理员权限才能访问音频设备：
+
+- Windows: 尝试以管理员身份运行程序
+- Linux: 确保用户在audio组中
+
+## 版本兼容性
+
+我们遵循语义化版本控制（Semantic Versioning）：
+
+- 主版本号（x.0.0）：不兼容的API更改
+- 次版本号（0.x.0）：向后兼容的功能添加
+- 修订号（0.0.x）：向后兼容的错误修复
 
 ## 许可证
 

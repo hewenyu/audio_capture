@@ -6,14 +6,123 @@
 
 - 跨平台支持：
   - Windows: 使用 WASAPI (Windows Audio Session API)
-  - Linux: 使用 PulseAudio
+  - Linux: 使用 PulseAudio (计划中)
 - 高性能：使用 CGO 直接调用底层音频 API
 - 支持捕获特定应用程序的音频
+- **开箱即用**：包含预编译的二进制文件，无需手动编译C/C++代码
 
 ## 安装
 
+### 使用Go模块（推荐）
+
 ```bash
-go get github.com/hewenyu/audio_capture/bindings/go
+go get github.com/hewenyu/audio_capture/bindings/go@latest
+```
+
+### 手动安装
+
+1. 克隆仓库：
+```bash
+git clone https://github.com/hewenyu/audio_capture.git
+cd audio_capture
+```
+
+2. 编译C/C++库和Go绑定：
+```bash
+# Windows
+cd c/windows
+mingw32-make
+cd ../../bindings/go
+mingw32-make
+```
+
+## 发布指南（项目维护者）
+
+为了确保用户可以通过`go get`命令开箱即用，我们需要在Go模块中包含预编译的二进制文件。
+
+### 1. 准备预编译二进制文件
+
+为每个支持的平台编译静态库：
+
+#### Windows (x64)
+
+```bash
+cd c/windows
+mingw32-make clean
+mingw32-make
+```
+
+编译完成后，将生成的`libwasapi_capture.a`文件复制到`bindings/go/pkg/audio/lib/windows_amd64/`目录。
+
+#### Linux (x64)
+
+```bash
+cd c/linux
+make clean
+make
+```
+
+编译完成后，将生成的`libpulseaudio_capture.a`文件复制到`bindings/go/pkg/audio/lib/linux_amd64/`目录。
+
+### 2. 更新Go绑定代码
+
+确保Go绑定代码能够正确加载预编译的二进制文件。在`bindings/go/pkg/audio/capture_windows.go`和其他平台特定文件中，使用类似以下的CGO指令：
+
+```go
+/*
+#cgo CFLAGS: -I${SRCDIR}
+#cgo windows,amd64 LDFLAGS: -L${SRCDIR}/lib/windows_amd64 -l:libwasapi_capture.a -static -lole32 -loleaut32 -lwinmm -luuid -lstdc++
+#cgo linux,amd64 LDFLAGS: -L${SRCDIR}/lib/linux_amd64 -l:libpulseaudio_capture.a -static -lpulse -lpulse-simple
+*/
+import "C"
+```
+
+### 3. 目录结构
+
+确保以下目录结构存在：
+
+```
+bindings/go/
+├── pkg/
+│   └── audio/
+│       ├── lib/
+│       │   ├── windows_amd64/
+│       │   │   └── libwasapi_capture.a
+│       │   └── linux_amd64/
+│       │       └── libpulseaudio_capture.a
+│       ├── capture.go
+│       ├── capture_windows.go
+│       ├── capture_linux.go
+│       └── wav_writer.go
+├── examples/
+│   └── app_capture/
+│       └── main.go
+├── go.mod
+├── go.sum
+└── README.md
+```
+
+### 4. 发布新版本
+
+1. 更新版本号：
+   - 在`go.mod`文件中更新版本号
+   - 遵循语义化版本控制（Semantic Versioning）
+
+2. 提交更改并创建新的Git标签：
+```bash
+git add .
+git commit -m "Release vX.Y.Z with precompiled binaries"
+git tag vX.Y.Z
+git push origin master --tags
+```
+
+3. 验证发布：
+```bash
+# 在一个新目录中测试安装
+mkdir test_install
+cd test_install
+go mod init test
+go get github.com/hewenyu/audio_capture/bindings/go@vX.Y.Z
 ```
 
 ## 快速开始
@@ -165,11 +274,29 @@ type Capture interface {
 }
 ```
 
+## 常见问题
+
+### 编译错误
+
+如果遇到CGO编译错误，请确保：
+
+1. 已安装MinGW-w64（Windows）或GCC（Linux）
+2. 环境变量中包含编译器路径
+3. 使用正确的构建标签（如果需要）
+
+### 找不到预编译库
+
+如果Go无法找到预编译的库文件：
+
+1. 确保使用的是最新版本的模块
+2. 尝试手动编译（见上文"手动安装"部分）
+3. 检查是否有与你的操作系统/架构匹配的预编译库
+
 ## 系统要求
 
 - Go 1.21 或更高版本
 - Windows 7+ 或支持 PulseAudio 的 Linux 系统
-- GCC 编译器（用于 CGO）
+- 如果需要手动编译：GCC 编译器（用于 CGO）
 
 ## 许可证
 
