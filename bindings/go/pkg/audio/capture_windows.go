@@ -1,8 +1,8 @@
 package audio
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../c/windows
-#cgo windows LDFLAGS: -L${SRCDIR}/../../../build/windows -lwasapi_capture
+#cgo CFLAGS: -I${SRCDIR}
+#cgo windows LDFLAGS: -lwasapi_capture
 
 #include <stdlib.h>
 #include "wasapi_capture.h"

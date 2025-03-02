@@ -24,8 +24,14 @@ else
 endif
 
 BUILD_DIR := build
-INCLUDE_PATH := $(abspath ../../c/windows):$(abspath ../../c/linux)
-LIBRARY_PATH := $(abspath ../../build/windows):$(abspath ../../build/linux)
+
+ifeq ($(PLATFORM),windows)
+INCLUDE_PATH := $(abspath ../../c/windows)
+LIBRARY_PATH := $(abspath ../../build/windows)
+else
+INCLUDE_PATH := $(abspath ../../c/linux)
+LIBRARY_PATH := $(abspath ../../build/linux)
+endif
 
 all: clean examples
 
