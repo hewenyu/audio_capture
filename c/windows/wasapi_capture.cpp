@@ -101,6 +101,19 @@ public:
 
     void set_callback(audio_callback callback, void* user_data) {
         std::cout << "C++: Setting callback function: " << (void*)callback << ", user_data: " << user_data << std::endl;
+        
+        // 检查回调函数是否为空
+        if (!callback) {
+            std::cerr << "C++: Warning - Setting NULL callback function!" << std::endl;
+        }
+        
+        // 检查用户数据是否为空
+        if (!user_data) {
+            std::cerr << "C++: Warning - Setting NULL user_data! This will prevent the callback from working correctly." << std::endl;
+            std::cerr << "C++: Please ensure a valid user_data pointer is provided." << std::endl;
+        }
+        
+        // 保存回调函数和用户数据
         callback_ = callback;
         user_data_ = user_data;
         
@@ -108,8 +121,18 @@ public:
         if (callback_ && user_data_) {
             std::cout << "C++: Testing callback with dummy data..." << std::endl;
             float test_data[10] = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f};
-            callback_(user_data_, test_data, 10);
-            std::cout << "C++: Test callback completed" << std::endl;
+            try {
+                callback_(user_data_, test_data, 10);
+                std::cout << "C++: Test callback completed successfully" << std::endl;
+            } catch (...) {
+                std::cerr << "C++: Exception during test callback!" << std::endl;
+            }
+        } else {
+            std::cerr << "C++: Cannot test callback - ";
+            if (!callback_) std::cerr << "callback function is NULL";
+            if (!callback_ && !user_data_) std::cerr << " and ";
+            if (!user_data_) std::cerr << "user_data is NULL";
+            std::cerr << std::endl;
         }
     }
 
@@ -367,28 +390,45 @@ private:
                     }
 
                     // 确保回调函数被调用，即使数据是静音的
-                    std::cout << "Calling callback with " << resampled_frames << " frames" << std::endl;
-                    
-                    // 直接打印回调函数地址和用户数据，用于调试
-                    std::cout << "Callback function: " << (void*)callback_ << ", User data: " << user_data_ << std::endl;
+                    // 每100帧打印一次详细日志
+                    if (total_frames_captured % 100 == 0) {
+                        std::cout << "\nCalling callback with " << resampled_frames << " frames" << std::endl;
+                        std::cout << "Callback function: " << (void*)callback_ << ", User data: " << user_data_ << std::endl;
+                    }
                     
                     // 确保回调函数和用户数据都有效
                     if (callback_ && user_data_) {
                         try {
-                            std::cout << "C++: Calling callback..." << std::endl;
+                            // 每1000帧打印一次详细日志
+                            if (total_frames_captured % 1000 == 0) {
+                                std::cout << "C++: Calling callback with user_data: " << user_data_ << std::endl;
+                            }
                             callback_(user_data_, resample_buffer, resampled_frames);
-                            std::cout << "C++: Callback completed successfully" << std::endl;
+                            if (total_frames_captured % 1000 == 0) {
+                                std::cout << "C++: Callback completed successfully" << std::endl;
+                            }
                         } catch (const std::exception& e) {
                             std::cerr << "C++: Exception in callback: " << e.what() << std::endl;
                         } catch (...) {
                             std::cerr << "C++: Unknown exception in callback" << std::endl;
                         }
                     } else {
-                        std::cerr << "Warning: Invalid callback or user data" << std::endl;
+                        // 每100帧打印一次警告
+                        if (total_frames_captured % 100 == 0) {
+                            std::cerr << "Warning: Cannot call callback - ";
+                            if (!callback_) std::cerr << "callback function is NULL";
+                            if (!callback_ && !user_data_) std::cerr << " and ";
+                            if (!user_data_) std::cerr << "user_data is NULL";
+                            std::cerr << std::endl;
+                        }
                     }
                     
                     delete[] mono_data;
                 } else {
+                    // 每100帧打印一次警告
+                    if (total_frames_captured % 100 == 0) {
+                        std::cerr << "Warning: No callback function set!" << std::endl;
+                    }
                     std::cout << "-"; // 无回调
                 }
             }

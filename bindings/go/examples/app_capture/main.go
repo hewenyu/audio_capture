@@ -90,6 +90,53 @@ func main() {
 	var callbackCount int
 	var totalBytesWritten int
 
+	// 设置音频回调
+	fmt.Println("设置音频回调函数...")
+	capture.SetCallback(func(data []float32) {
+		callbackCount++
+
+		// 记录到文件，以防控制台输出被截断
+		f, err := os.OpenFile("app_callback.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err == nil {
+			defer f.Close()
+			fmt.Fprintf(f, "App callback #%d: received %d samples\n", callbackCount, len(data))
+		}
+
+		// 检查数据是否有效
+		if len(data) == 0 {
+			fmt.Print("X") // 表示收到空数据
+			return
+		}
+
+		// 检查数据是否包含音频（非静音）
+		hasAudio := false
+		for _, sample := range data {
+			if sample > 0.01 || sample < -0.01 {
+				hasAudio = true
+				break
+			}
+		}
+
+		if !hasAudio {
+			fmt.Print("S") // 表示静音数据
+		} else {
+			fmt.Print("+") // 表示有声音数据
+		}
+
+		// 复制数据并发送到通道
+		dataCopy := make([]float32, len(data))
+		copy(dataCopy, data)
+		totalSamples += len(data)
+
+		select {
+		case audioChan <- dataCopy:
+			// 数据已发送
+		default:
+			// 通道已满，丢弃数据
+			fmt.Print("D") // 表示数据被丢弃
+		}
+	})
+
 	// 启动一个 goroutine 来处理音频数据
 	go func() {
 		defer wg.Done()
@@ -173,45 +220,6 @@ func main() {
 			}
 		}
 	}()
-
-	// 设置音频回调
-	capture.SetCallback(func(data []float32) {
-		callbackCount++
-
-		// 检查数据是否有效
-		if len(data) == 0 {
-			fmt.Print("X") // 表示收到空数据
-			return
-		}
-
-		// 检查数据是否包含音频（非静音）
-		hasAudio := false
-		for _, sample := range data {
-			if sample > 0.01 || sample < -0.01 {
-				hasAudio = true
-				break
-			}
-		}
-
-		if !hasAudio {
-			fmt.Print("S") // 表示静音数据
-		} else {
-			fmt.Print("+") // 表示有声音数据
-		}
-
-		// 复制数据并发送到通道
-		dataCopy := make([]float32, len(data))
-		copy(dataCopy, data)
-		totalSamples += len(data)
-
-		select {
-		case audioChan <- dataCopy:
-			// 数据已发送
-		default:
-			// 通道已满，丢弃数据
-			fmt.Print("D") // 表示数据被丢弃
-		}
-	})
 
 	fmt.Printf("\n开始捕获 [%d] %s 的音频，将保存到 %s\n", pid, apps[pid], outputFile)
 	fmt.Println("录制将在 30 秒后自动停止...")

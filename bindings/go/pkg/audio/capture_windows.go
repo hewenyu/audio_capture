@@ -14,6 +14,7 @@ extern void goAudioCallback(void* user_data, float* buffer, int frames);
 import "C"
 import (
 	"fmt"
+	"os"
 	"runtime"
 	"sync"
 	"syscall"
@@ -35,6 +36,7 @@ func registerCallback(callback AudioCallback) uintptr {
 	id := nextCallbackID
 	nextCallbackID++
 	callbackMap[id] = callback
+	fmt.Printf("Go: Registered callback with ID: %d, total callbacks: %d\n", id, len(callbackMap))
 	return id
 }
 
@@ -43,7 +45,17 @@ func getCallback(id uintptr) AudioCallback {
 	callbackMapMutex.RLock()
 	defer callbackMapMutex.RUnlock()
 
-	return callbackMap[id]
+	callback, ok := callbackMap[id]
+	if !ok {
+		fmt.Printf("Go: Callback ID %d not found in map (size: %d)\n", id, len(callbackMap))
+		// 打印所有可用的回调ID
+		fmt.Print("Go: Available callback IDs: ")
+		for k := range callbackMap {
+			fmt.Printf("%d ", k)
+		}
+		fmt.Println()
+	}
+	return callback
 }
 
 // 取消注册回调函数
@@ -62,10 +74,42 @@ type windowsCapture struct {
 
 //export goAudioCallback
 func goAudioCallback(userData unsafe.Pointer, buffer *C.float, frames C.int) {
+	// 使用文件记录，以防控制台输出被截断
+	f, err := os.OpenFile("go_callback.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err == nil {
+		defer f.Close()
+		fmt.Fprintf(f, "Go callback entered: userData=%v, buffer=%v, frames=%d\n", userData, buffer, frames)
+	}
+
 	fmt.Printf("Go callback entered: userData=%v, buffer=%v, frames=%d\n", userData, buffer, frames)
 
+	// 检查参数是否有效
 	if userData == nil {
-		fmt.Println("Warning: userData is nil in goAudioCallback")
+		fmt.Println("Error: userData is nil in goAudioCallback")
+		// 尝试使用第一个可用的回调
+		callbackMapMutex.RLock()
+		if len(callbackMap) > 0 {
+			var firstID uintptr
+			var firstCallback AudioCallback
+			for id, cb := range callbackMap {
+				firstID = id
+				firstCallback = cb
+				break
+			}
+			callbackMapMutex.RUnlock()
+
+			fmt.Printf("Attempting to use first available callback (ID: %d)\n", firstID)
+			if buffer != nil && frames > 0 {
+				// 转换数据并调用回调
+				data := unsafe.Slice((*float32)(unsafe.Pointer(buffer)), int(frames))
+				dataCopy := make([]float32, len(data))
+				copy(dataCopy, data)
+				firstCallback(dataCopy)
+			}
+			return
+		}
+		callbackMapMutex.RUnlock()
+		fmt.Println("No callbacks available in map")
 		return
 	}
 
@@ -76,13 +120,26 @@ func goAudioCallback(userData unsafe.Pointer, buffer *C.float, frames C.int) {
 	// 获取回调函数
 	callback := getCallback(callbackID)
 	if callback == nil {
-		fmt.Println("Warning: callback not found for ID:", callbackID)
+		fmt.Printf("Error: callback not found for ID: %d\n", callbackID)
+		// 打印所有可用的回调ID
+		callbackMapMutex.RLock()
+		fmt.Print("Available callback IDs: ")
+		for k := range callbackMap {
+			fmt.Printf("%d ", k)
+		}
+		fmt.Println()
+		callbackMapMutex.RUnlock()
 		return
 	}
 
 	// 检查帧数是否有效
 	if frames <= 0 {
 		fmt.Println("Warning: received 0 frames in goAudioCallback")
+		return
+	}
+
+	if buffer == nil {
+		fmt.Println("Error: buffer is nil in goAudioCallback")
 		return
 	}
 
@@ -110,7 +167,7 @@ func goAudioCallback(userData unsafe.Pointer, buffer *C.float, frames C.int) {
 	copy(dataCopy, data)
 
 	// Call the user callback
-	fmt.Println("Calling user callback with", len(dataCopy), "samples")
+	fmt.Printf("Calling user callback with %d samples\n", len(dataCopy))
 	callback(dataCopy)
 }
 
@@ -170,9 +227,11 @@ func (c *windowsCapture) GetFormat() (*AudioFormat, error) {
 
 func (c *windowsCapture) SetCallback(callback AudioCallback) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	// 如果已经有回调，先取消注册
 	if c.callbackID != 0 {
+		fmt.Printf("Go: Unregistering previous callback ID: %d\n", c.callbackID)
 		unregisterCallback(c.callbackID)
 		c.callbackID = 0
 	}
@@ -180,18 +239,39 @@ func (c *windowsCapture) SetCallback(callback AudioCallback) {
 	// 注册新的回调
 	if callback != nil {
 		c.callbackID = registerCallback(callback)
-		fmt.Printf("Registered callback with ID: %d\n", c.callbackID)
-	}
+		fmt.Printf("Go: Registered new callback with ID: %d\n", c.callbackID)
 
-	c.mu.Unlock()
+		// 确保callbackID不为0，如果为0则重新注册
+		if c.callbackID == 0 {
+			fmt.Println("Go: Warning - callback ID is 0, re-registering...")
+			// 强制nextCallbackID至少为1
+			if nextCallbackID == 0 {
+				nextCallbackID = 1
+			}
+			c.callbackID = registerCallback(callback)
+			fmt.Printf("Go: Re-registered callback with ID: %d\n", c.callbackID)
+		}
 
-	if c.handle != nil && c.callbackID != 0 {
-		// 直接使用goAudioCallback函数
-		fmt.Printf("Setting C callback with user data: %v\n", unsafe.Pointer(c.callbackID))
-		C.wasapi_capture_set_callback(c.handle, (*[0]byte)(C.goAudioCallback), unsafe.Pointer(c.callbackID))
-	} else if c.handle != nil {
+		// 测试回调是否有效
+		fmt.Println("Go: Testing callback locally...")
+		testData := make([]float32, 10)
+		for i := range testData {
+			testData[i] = float32(i) / 10.0
+		}
+		callback(testData)
+		fmt.Println("Go: Local callback test completed")
+
+		// 设置C回调，传递callbackID作为用户数据
+		if c.handle != nil {
+			fmt.Printf("Go: Setting C callback with user data: %v (ID: %d)\n", unsafe.Pointer(c.callbackID), c.callbackID)
+			C.wasapi_capture_set_callback(c.handle, (*[0]byte)(C.goAudioCallback), unsafe.Pointer(c.callbackID))
+		}
+	} else {
 		// 清除回调
-		C.wasapi_capture_set_callback(c.handle, nil, nil)
+		fmt.Println("Go: Clearing C callback")
+		if c.handle != nil {
+			C.wasapi_capture_set_callback(c.handle, nil, nil)
+		}
 	}
 }
 
