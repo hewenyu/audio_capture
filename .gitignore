@@ -36,3 +36,5 @@ build/
 .vscode/
 
 bindings/go/**/*.h
+
+*.log
