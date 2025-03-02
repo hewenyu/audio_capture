@@ -2,6 +2,7 @@
 CC := g++
 CFLAGS := -Wall -Wextra -O2 -shared -DBUILDING_DLL
 LDFLAGS := -lole32 -loleaut32 -lwinmm -luuid -lstdc++
+DLLTOOL := dlltool
 
 # Directories
 BUILD_DIR := ..\..\build\windows
@@ -11,6 +12,7 @@ INCLUDE_DIR := .
 SRCS := wasapi_capture.cpp
 OBJS := $(SRCS:.cpp=.o)
 TARGET := wasapi_capture.dll
+LIB_TARGET := wasapi_capture.lib
 
 # Commands
 ifeq ($(OS),Windows_NT)
@@ -24,13 +26,13 @@ else
 endif
 
 # Default target
-all: $(BUILD_DIR)\$(TARGET)
+all: $(BUILD_DIR)\$(TARGET) $(BUILD_DIR)\$(LIB_TARGET)
 
 # Build the DLL
 $(BUILD_DIR)\$(TARGET): wasapi_capture.o
 	@echo "Building $(TARGET)"
 	@if not exist "$(BUILD_DIR)" $(MKDIR) "$(BUILD_DIR)"
-	@$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	@$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -Wl,--out-implib,$(BUILD_DIR)\$(LIB_TARGET)
 	@echo "Done building $(TARGET)"
 
 # Compile source files
@@ -43,5 +45,6 @@ clean:
 	@echo "Cleaning Windows build artifacts"
 	@$(RM) $(OBJS)
 	@if exist "$(BUILD_DIR)\$(TARGET)" $(RM) "$(BUILD_DIR)\$(TARGET)"
+	@if exist "$(BUILD_DIR)\$(LIB_TARGET)" $(RM) "$(BUILD_DIR)\$(LIB_TARGET)"
 
 .PHONY: all clean 

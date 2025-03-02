@@ -1,0 +1,11 @@
+LIBRARY wasapi_capture
+EXPORTS
+    wasapi_capture_create
+    wasapi_capture_destroy
+    wasapi_capture_initialize
+    wasapi_capture_start
+    wasapi_capture_stop
+    wasapi_capture_set_callback
+    wasapi_capture_get_applications
+    wasapi_capture_start_process
+    wasapi_capture_get_format 

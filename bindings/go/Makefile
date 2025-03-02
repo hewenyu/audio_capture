@@ -8,6 +8,8 @@ ifeq ($(OS),Windows_NT)
     RM := del /Q
     RMDIR := rmdir /s /q
     EXE := .exe
+    # Windows specific environment variable setting
+    SET_ENV := set
 else
     PLATFORM := linux
     LIB_EXT := .so
@@ -17,6 +19,8 @@ else
     RM := rm -f
     RMDIR := rm -rf
     EXE :=
+    # Unix specific environment variable setting
+    SET_ENV := export
 endif
 
 BUILD_DIR := build
@@ -28,21 +32,32 @@ all: clean examples
 # Build examples
 examples: mkdir modtidy
 	@echo "Building examples"
-	@C_INCLUDE_PATH=${INCLUDE_PATH} LIBRARY_PATH=${LIBRARY_PATH} go build -o ${BUILD_DIR}/basic_capture$(EXE) ./examples/basic_capture
-	@C_INCLUDE_PATH=${INCLUDE_PATH} LIBRARY_PATH=${LIBRARY_PATH} go build -o ${BUILD_DIR}/app_capture$(EXE) ./examples/app_capture
+ifeq ($(OS),Windows_NT)
+	@cmd /C "set C_INCLUDE_PATH=$(INCLUDE_PATH) && set LIBRARY_PATH=$(LIBRARY_PATH) && go build -o $(BUILD_DIR)/basic_capture$(EXE) ./examples/basic_capture"
+	@cmd /C "set C_INCLUDE_PATH=$(INCLUDE_PATH) && set LIBRARY_PATH=$(LIBRARY_PATH) && go build -o $(BUILD_DIR)/app_capture$(EXE) ./examples/app_capture"
+else
+	@C_INCLUDE_PATH=$(INCLUDE_PATH) LIBRARY_PATH=$(LIBRARY_PATH) go build -o $(BUILD_DIR)/basic_capture$(EXE) ./examples/basic_capture
+	@C_INCLUDE_PATH=$(INCLUDE_PATH) LIBRARY_PATH=$(LIBRARY_PATH) go build -o $(BUILD_DIR)/app_capture$(EXE) ./examples/app_capture
+endif
 
 # Run tests
 test: modtidy
 	@echo "Running tests"
-	@C_INCLUDE_PATH=${INCLUDE_PATH} LIBRARY_PATH=${LIBRARY_PATH} go test -v ./...
+ifeq ($(OS),Windows_NT)
+	@cmd /C "set C_INCLUDE_PATH=$(INCLUDE_PATH) && set LIBRARY_PATH=$(LIBRARY_PATH) && go test -v ./..."
+else
+	@C_INCLUDE_PATH=$(INCLUDE_PATH) LIBRARY_PATH=$(LIBRARY_PATH) go test -v ./...
+endif
 
 # Create build directory
 mkdir:
 	@echo "Creating build directory"
 ifeq ($(PLATFORM),windows)
-	@if not exist "$(BUILD_DIR)" $(MKDIR) "$(BUILD_DIR)"
+	@if not exist "$(BUILD_DIR)" mkdir "$(BUILD_DIR)" 2>NUL
+	@copy ..\..\c\windows\wasapi_capture.h pkg\audio\ >NUL
 else
 	@$(MKDIR) $(BUILD_DIR)
+	@cp ../../c/linux/pulse_capture.h pkg/audio/
 endif
 
 # Update Go modules

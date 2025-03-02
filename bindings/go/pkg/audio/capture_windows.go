@@ -2,7 +2,7 @@ package audio
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../c/windows
-#cgo LDFLAGS: -L${SRCDIR}/../../../c/windows -lwasapi_capture
+#cgo windows LDFLAGS: -L${SRCDIR}/../../../build/windows -lwasapi_capture
 
 #include <stdlib.h>
 #include "wasapi_capture.h"
@@ -119,8 +119,8 @@ func (c *windowsCapture) ListApplications() (map[uint32]string, error) {
 	}
 
 	const maxApps = 32
-	apps := make([]C.AudioAppInfo, maxApps)
-	count := C.wasapi_capture_get_applications(c.handle, unsafe.Pointer(&apps[0]), C.int(maxApps))
+	var apps [maxApps]C.AudioAppInfo
+	count := C.wasapi_capture_get_applications(c.handle, &apps[0], C.int(maxApps))
 
 	result := make(map[uint32]string)
 	for i := 0; i < int(count); i++ {
