@@ -71,12 +71,12 @@ func main() {
 	outputFile := filepath.Join(outputDir, fmt.Sprintf("%s_%s.wav", appName, timestamp))
 
 	// 创建 WAV 文件写入器
-	wavWriter, err := audio.NewWavWriter(outputFile, int(format.SampleRate), int(format.Channels), int(format.BitsPerSample))
+	wavWriter, err := audio.NewWavWriter(outputFile, format)
 	if err != nil {
 		fmt.Printf("创建 WAV 文件失败: %v\n", err)
 		os.Exit(1)
 	}
-	defer wavWriter.Close()
+	// 注意：不要在这里使用 defer wavWriter.Close()，我们会在处理完所有数据后手动关闭
 
 	// 创建音频数据通道和控制通道
 	audioChan := make(chan []float32, 1000) // 增大缓冲区
@@ -84,20 +84,30 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
+	// 创建计数器，用于跟踪收到的音频数据
+	var totalSamples int
+	var dataReceived bool
+	var callbackCount int
+
 	// 启动一个 goroutine 来处理音频数据
 	go func() {
 		defer wg.Done()
 
 		var sampleCount int
 		startTime := time.Now()
+		fmt.Println("开始处理音频数据...")
 
 		for {
 			select {
 			case data, ok := <-audioChan:
 				if !ok {
 					// 通道已关闭，退出循环
+					fmt.Printf("\n通道已关闭，总共处理了 %d 个采样点\n", sampleCount)
 					return
 				}
+
+				dataReceived = true
+				fmt.Printf("\n收到音频数据: %d 个采样点", len(data))
 
 				// 写入 WAV 文件
 				if err := wavWriter.WriteFloat32(data); err != nil {
@@ -109,22 +119,27 @@ func main() {
 				elapsed := time.Since(startTime)
 
 				// 显示进度
-				fmt.Printf("\r已录制 %.1f 秒 (%d 个采样点)",
-					elapsed.Seconds(), sampleCount)
+				fmt.Printf("\r已录制 %.1f 秒 (%d 个采样点, 数据大小: %d 字节)",
+					elapsed.Seconds(), sampleCount, sampleCount*2) // 假设 16 位采样
 
 			case <-stopChan:
 				// 收到停止信号，但继续处理通道中的剩余数据
 				fmt.Println("\n正在完成录制...")
 
 				// 排空通道中的所有数据
+				drainedCount := 0
 				for data := range audioChan {
 					if err := wavWriter.WriteFloat32(data); err != nil {
 						fmt.Printf("\n写入 WAV 文件失败: %v\n", err)
+					} else {
+						sampleCount += len(data)
+						drainedCount += len(data)
 					}
-					sampleCount += len(data)
 				}
+				fmt.Printf("\n排空通道，处理了额外的 %d 个采样点\n", drainedCount)
 
 				// 确保 WAV 文件正确关闭
+				fmt.Printf("\n关闭 WAV 文件，总共写入了 %d 个采样点\n", sampleCount)
 				if err := wavWriter.Close(); err != nil {
 					fmt.Printf("\n关闭 WAV 文件失败: %v\n", err)
 				}
@@ -137,18 +152,44 @@ func main() {
 
 	// 设置音频回调
 	capture.SetCallback(func(data []float32) {
+		callbackCount++
+
+		// 检查数据是否有效
+		if len(data) == 0 {
+			fmt.Print("X") // 表示收到空数据
+			return
+		}
+
+		// 检查数据是否包含音频（非静音）
+		hasAudio := false
+		for _, sample := range data {
+			if sample > 0.01 || sample < -0.01 {
+				hasAudio = true
+				break
+			}
+		}
+
+		if !hasAudio {
+			fmt.Print("S") // 表示静音数据
+			return
+		}
+
 		// 复制数据并发送到通道
 		dataCopy := make([]float32, len(data))
 		copy(dataCopy, data)
+		totalSamples += len(data)
 
 		select {
 		case audioChan <- dataCopy:
-			// 数据已发送
+			fmt.Print("+") // 表示数据已发送
 		default:
 			// 通道已满，丢弃数据
-			fmt.Print(".")
+			fmt.Print("-") // 表示数据被丢弃
 		}
 	})
+
+	fmt.Printf("\n开始捕获 [%d] %s 的音频，将保存到 %s\n", pid, apps[pid], outputFile)
+	fmt.Println("录制将在 30 秒后自动停止...")
 
 	// 开始捕获指定应用的音频
 	if err := capture.StartCapturingProcess(pid); err != nil {
@@ -158,11 +199,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("\n开始捕获 [%d] %s 的音频，将保存到 %s\n", pid, apps[pid], outputFile)
-	fmt.Println("录制将在 30 秒后自动停止...")
+	// 等待 30 秒，每秒打印一次状态
+	for i := 0; i < 30; i++ {
+		time.Sleep(1 * time.Second)
+		fmt.Printf("\n已运行 %d 秒，回调次数: %d，总采样点: %d，是否收到数据: %v",
+			i+1, callbackCount, totalSamples, dataReceived)
+	}
 
-	// 等待 30 秒
-	time.Sleep(30 * time.Second)
+	fmt.Println("\n\n录制时间到，停止捕获...")
 
 	// 停止录音
 	capture.Stop()
@@ -173,4 +217,8 @@ func main() {
 
 	// 等待处理完成
 	wg.Wait()
+
+	// 打印最终统计信息
+	fmt.Printf("\n录制完成。总回调次数: %d，总采样点: %d，是否收到数据: %v\n",
+		callbackCount, totalSamples, dataReceived)
 }
