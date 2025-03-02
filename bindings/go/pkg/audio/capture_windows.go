@@ -14,13 +14,48 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"syscall"
 	"unsafe"
 )
 
+// 全局回调映射表，用于存储回调函数
+var (
+	callbackMapMutex sync.RWMutex
+	callbackMap      = make(map[uintptr]AudioCallback)
+	nextCallbackID   uintptr
+)
+
+// 注册回调函数，返回一个唯一的ID
+func registerCallback(callback AudioCallback) uintptr {
+	callbackMapMutex.Lock()
+	defer callbackMapMutex.Unlock()
+
+	id := nextCallbackID
+	nextCallbackID++
+	callbackMap[id] = callback
+	return id
+}
+
+// 获取回调函数
+func getCallback(id uintptr) AudioCallback {
+	callbackMapMutex.RLock()
+	defer callbackMapMutex.RUnlock()
+
+	return callbackMap[id]
+}
+
+// 取消注册回调函数
+func unregisterCallback(id uintptr) {
+	callbackMapMutex.Lock()
+	defer callbackMapMutex.Unlock()
+
+	delete(callbackMap, id)
+}
+
 type windowsCapture struct {
-	handle   unsafe.Pointer
-	callback AudioCallback
-	mu       sync.Mutex
+	handle     unsafe.Pointer
+	callbackID uintptr
+	mu         sync.Mutex
 }
 
 //export goAudioCallback
@@ -29,11 +64,11 @@ func goAudioCallback(userData unsafe.Pointer, buffer *C.float, frames C.int) {
 		return
 	}
 
-	capture := (*windowsCapture)(userData)
-	capture.mu.Lock()
-	callback := capture.callback
-	capture.mu.Unlock()
+	// 从用户数据中获取回调ID
+	callbackID := uintptr(userData)
 
+	// 获取回调函数
+	callback := getCallback(callbackID)
 	if callback == nil {
 		return
 	}
@@ -105,11 +140,26 @@ func (c *windowsCapture) GetFormat() (*AudioFormat, error) {
 
 func (c *windowsCapture) SetCallback(callback AudioCallback) {
 	c.mu.Lock()
-	c.callback = callback
+
+	// 如果已经有回调，先取消注册
+	if c.callbackID != 0 {
+		unregisterCallback(c.callbackID)
+		c.callbackID = 0
+	}
+
+	// 注册新的回调
+	if callback != nil {
+		c.callbackID = registerCallback(callback)
+	}
+
 	c.mu.Unlock()
 
-	if c.handle != nil {
-		C.wasapi_capture_set_callback(c.handle, (*[0]byte)(C.goAudioCallback), unsafe.Pointer(c))
+	if c.handle != nil && c.callbackID != 0 {
+		// 直接使用回调ID作为用户数据
+		C.wasapi_capture_set_callback(c.handle, (*[0]byte)(C.goAudioCallback), unsafe.Pointer(c.callbackID))
+	} else if c.handle != nil {
+		// 清除回调
+		C.wasapi_capture_set_callback(c.handle, nil, nil)
 	}
 }
 
@@ -125,7 +175,9 @@ func (c *windowsCapture) ListApplications() (map[uint32]string, error) {
 	result := make(map[uint32]string)
 	for i := 0; i < int(count); i++ {
 		if apps[i].name[0] != 0 {
-			result[uint32(apps[i].pid)] = C.GoString((*C.char)(unsafe.Pointer(&apps[i].name[0])))
+			namePtr := (*uint16)(unsafe.Pointer(&apps[i].name[0]))
+			name := syscall.UTF16ToString((*[260]uint16)(unsafe.Pointer(namePtr))[:])
+			result[uint32(apps[i].pid)] = name
 		}
 	}
 
@@ -145,6 +197,15 @@ func (c *windowsCapture) StartCapturingProcess(pid uint32) error {
 }
 
 func (c *windowsCapture) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	// 取消注册回调
+	if c.callbackID != 0 {
+		unregisterCallback(c.callbackID)
+		c.callbackID = 0
+	}
+
 	if c.handle != nil {
 		C.wasapi_capture_destroy(c.handle)
 		c.handle = nil
