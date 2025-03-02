@@ -24,8 +24,13 @@ go.work.sum
 # env file
 .env
 
+**/_pycache_/*
+
+reference_project/
+
 **/dist/
 **/build/
+**/build_c/
 
 **/*.egg-info/
 

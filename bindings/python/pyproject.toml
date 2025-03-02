@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=42", "wheel", "cmake>=3.12"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audio_capture"
+version = "0.1.0"
+description = "Python bindings for audio capture library"
+readme = "README.md"
+authors = [
+    {name = "hewenyu", email = "hewenyu@example.com"}
+]
+requires-python = ">=3.6"
+dependencies = [
+    "numpy",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/hewenyu/audio_capture"
+"Bug Tracker" = "https://github.com/hewenyu/audio_capture/issues" 
