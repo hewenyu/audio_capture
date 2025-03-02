@@ -12,12 +12,24 @@ SRCS := pulse_capture.c
 OBJS := $(SRCS:.c=.o)
 TARGET := libpulse_capture.so
 
+# Commands
+ifeq ($(OS),Windows_NT)
+    MKDIR := mkdir
+    RM := del /Q
+    RMDIR := rmdir /s /q
+else
+    MKDIR := mkdir -p
+    RM := rm -f
+    RMDIR := rm -rf
+endif
+
 # Default target
 all: $(BUILD_DIR)/$(TARGET)
 
 # Build the shared library
 $(BUILD_DIR)/$(TARGET): $(OBJS)
 	@echo "Building $(TARGET)"
+	@$(MKDIR) $(BUILD_DIR)
 	@$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "Done building $(TARGET)"
 
@@ -29,7 +41,7 @@ $(BUILD_DIR)/$(TARGET): $(OBJS)
 # Clean build artifacts
 clean:
 	@echo "Cleaning Linux build artifacts"
-	@rm -f $(OBJS)
-	@rm -f $(BUILD_DIR)/$(TARGET)
+	@$(RM) $(OBJS)
+	@$(RM) $(BUILD_DIR)/$(TARGET)
 
 .PHONY: all clean 

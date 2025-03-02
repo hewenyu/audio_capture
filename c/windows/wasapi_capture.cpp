@@ -25,10 +25,12 @@ public:
         audio_device_(nullptr),
         audio_client_(nullptr),
         capture_client_(nullptr),
-        session_manager_(nullptr),
         is_initialized_(false),
+        stop_capture_(false),
+        capture_thread_(nullptr),
         callback_(nullptr),
         user_data_(nullptr),
+        session_manager_(nullptr),
         mix_format_(nullptr) {
         CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     }

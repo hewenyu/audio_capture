@@ -16,11 +16,15 @@ ifeq ($(OS),Windows_NT)
     LIB_EXT := .dll
     LIB_PREFIX :=
     TARGET := wasapi_capture
+    MKDIR := mkdir
+    RM := rmdir /s /q
 else
     PLATFORM := linux
     LIB_EXT := .so
     LIB_PREFIX := lib
     TARGET := pulse_capture
+    MKDIR := mkdir -p
+    RM := rm -rf
 endif
 
 # Directories
@@ -58,20 +62,22 @@ test: c-lib
 # Create build directory
 mkdir:
 	@echo "Creating build directory"
-	@install -d $(BUILD_DIR)
 ifeq ($(PLATFORM),windows)
-	@install -d $(BUILD_DIR)/windows
+	@if not exist "$(BUILD_DIR)" $(MKDIR) "$(BUILD_DIR)"
+	@if not exist "$(BUILD_DIR)\windows" $(MKDIR) "$(BUILD_DIR)\windows"
 else
-	@install -d $(BUILD_DIR)/linux
+	@$(MKDIR) $(BUILD_DIR)
+	@$(MKDIR) $(BUILD_DIR)/linux
 endif
 
 # Clean everything
 clean:
 	@echo "Cleaning all build artifacts"
-	@rm -rf $(BUILD_DIR)
 ifeq ($(PLATFORM),windows)
+	@if exist "$(BUILD_DIR)" $(RM) "$(BUILD_DIR)"
 	@${MAKE} -C $(C_DIR)/windows clean
 else
+	@$(RM) $(BUILD_DIR)
 	@${MAKE} -C $(C_DIR)/linux clean
 endif
 	@${MAKE} -C $(BINDINGS_DIR)/go clean

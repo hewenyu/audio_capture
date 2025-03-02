@@ -1,35 +1,47 @@
 # Compiler settings
-CC := gcc
+CC := g++
 CFLAGS := -Wall -Wextra -O2 -shared -DBUILDING_DLL
-LDFLAGS := -lole32 -loleaut32 -lwinmm -luuid
+LDFLAGS := -lole32 -loleaut32 -lwinmm -luuid -lstdc++
 
 # Directories
-BUILD_DIR := ../../build/windows
+BUILD_DIR := ..\..\build\windows
 INCLUDE_DIR := .
 
 # Source files
-SRCS := wasapi_capture.c
-OBJS := $(SRCS:.c=.o)
+SRCS := wasapi_capture.cpp
+OBJS := $(SRCS:.cpp=.o)
 TARGET := wasapi_capture.dll
 
+# Commands
+ifeq ($(OS),Windows_NT)
+    MKDIR := mkdir
+    RM := del /Q
+    RMDIR := rmdir /s /q
+else
+    MKDIR := mkdir -p
+    RM := rm -f
+    RMDIR := rm -rf
+endif
+
 # Default target
-all: $(BUILD_DIR)/$(TARGET)
+all: $(BUILD_DIR)\$(TARGET)
 
 # Build the DLL
-$(BUILD_DIR)/$(TARGET): $(OBJS)
+$(BUILD_DIR)\$(TARGET): wasapi_capture.o
 	@echo "Building $(TARGET)"
+	@if not exist "$(BUILD_DIR)" $(MKDIR) "$(BUILD_DIR)"
 	@$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "Done building $(TARGET)"
 
 # Compile source files
-%.o: %.c
+wasapi_capture.o: wasapi_capture.cpp wasapi_capture.h
 	@echo "Compiling $<"
 	@$(CC) $(CFLAGS) -I$(INCLUDE_DIR) -c $< -o $@
 
 # Clean build artifacts
 clean:
 	@echo "Cleaning Windows build artifacts"
-	@rm -f $(OBJS)
-	@rm -f $(BUILD_DIR)/$(TARGET)
+	@$(RM) $(OBJS)
+	@if exist "$(BUILD_DIR)\$(TARGET)" $(RM) "$(BUILD_DIR)\$(TARGET)"
 
 .PHONY: all clean 
