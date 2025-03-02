@@ -28,9 +28,11 @@ BUILD_DIR := build
 ifeq ($(PLATFORM),windows)
 INCLUDE_PATH := $(abspath ../../c/windows)
 LIBRARY_PATH := $(abspath ../../build/windows)
+GO_LDFLAGS := -ldflags=-extldflags=-static
 else
 INCLUDE_PATH := $(abspath ../../c/linux)
 LIBRARY_PATH := $(abspath ../../build/linux)
+GO_LDFLAGS := -ldflags '-extldflags "-static"'
 endif
 
 all: clean examples
@@ -39,20 +41,20 @@ all: clean examples
 examples: mkdir modtidy
 	@echo "Building examples"
 ifeq ($(OS),Windows_NT)
-	@cmd /C "set C_INCLUDE_PATH=$(INCLUDE_PATH) && set LIBRARY_PATH=$(LIBRARY_PATH) && set CGO_LDFLAGS=-L$(LIBRARY_PATH) && go build -o $(BUILD_DIR)/basic_capture$(EXE) ./examples/basic_capture"
-	@cmd /C "set C_INCLUDE_PATH=$(INCLUDE_PATH) && set LIBRARY_PATH=$(LIBRARY_PATH) && set CGO_LDFLAGS=-L$(LIBRARY_PATH) && go build -o $(BUILD_DIR)/app_capture$(EXE) ./examples/app_capture"
+	@cmd /C "set C_INCLUDE_PATH=$(INCLUDE_PATH) && set CGO_LDFLAGS=-L$(LIBRARY_PATH) && set CGO_ENABLED=1 && go build -o $(BUILD_DIR)/basic_capture$(EXE) $(GO_LDFLAGS) ./examples/basic_capture"
+	@cmd /C "set C_INCLUDE_PATH=$(INCLUDE_PATH) && set CGO_LDFLAGS=-L$(LIBRARY_PATH) && set CGO_ENABLED=1 && go build -o $(BUILD_DIR)/app_capture$(EXE) $(GO_LDFLAGS) ./examples/app_capture"
 else
-	@C_INCLUDE_PATH=$(INCLUDE_PATH) LIBRARY_PATH=$(LIBRARY_PATH) CGO_LDFLAGS="-L$(LIBRARY_PATH)" go build -o $(BUILD_DIR)/basic_capture$(EXE) ./examples/basic_capture
-	@C_INCLUDE_PATH=$(INCLUDE_PATH) LIBRARY_PATH=$(LIBRARY_PATH) CGO_LDFLAGS="-L$(LIBRARY_PATH)" go build -o $(BUILD_DIR)/app_capture$(EXE) ./examples/app_capture
+	@C_INCLUDE_PATH=$(INCLUDE_PATH) CGO_LDFLAGS="-L$(LIBRARY_PATH)" CGO_ENABLED=1 go build -o $(BUILD_DIR)/basic_capture$(EXE) $(GO_LDFLAGS) ./examples/basic_capture
+	@C_INCLUDE_PATH=$(INCLUDE_PATH) CGO_LDFLAGS="-L$(LIBRARY_PATH)" CGO_ENABLED=1 go build -o $(BUILD_DIR)/app_capture$(EXE) $(GO_LDFLAGS) ./examples/app_capture
 endif
 
 # Run tests
 test: modtidy
 	@echo "Running tests"
 ifeq ($(OS),Windows_NT)
-	@cmd /C "set C_INCLUDE_PATH=$(INCLUDE_PATH) && set LIBRARY_PATH=$(LIBRARY_PATH) && set CGO_LDFLAGS=-L$(LIBRARY_PATH) && go test -v ./..."
+	@cmd /C "set C_INCLUDE_PATH=$(INCLUDE_PATH) && set CGO_LDFLAGS=-L$(LIBRARY_PATH) && set CGO_ENABLED=1 && go test -v ./..."
 else
-	@C_INCLUDE_PATH=$(INCLUDE_PATH) LIBRARY_PATH=$(LIBRARY_PATH) CGO_LDFLAGS="-L$(LIBRARY_PATH)" go test -v ./...
+	@C_INCLUDE_PATH=$(INCLUDE_PATH) CGO_LDFLAGS="-L$(LIBRARY_PATH)" CGO_ENABLED=1 go test -v ./...
 endif
 
 # Create build directory

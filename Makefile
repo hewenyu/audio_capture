@@ -33,7 +33,7 @@ C_DIR := c
 BINDINGS_DIR := bindings
 
 # Default target
-all: c-lib bindings examples
+all: c-lib
 
 # Build C libraries
 c-lib: mkdir

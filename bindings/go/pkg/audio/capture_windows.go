@@ -2,7 +2,7 @@ package audio
 
 /*
 #cgo CFLAGS: -I${SRCDIR}
-#cgo windows LDFLAGS: -lwasapi_capture
+#cgo windows LDFLAGS: -l:libwasapi_capture.a -static -lole32 -loleaut32 -lwinmm -luuid -lstdc++
 
 #include <stdlib.h>
 #include "wasapi_capture.h"
