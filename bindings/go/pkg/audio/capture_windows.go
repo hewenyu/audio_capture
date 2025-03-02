@@ -5,8 +5,10 @@ package audio
 #cgo windows LDFLAGS: -l:libwasapi_capture.a -static -lole32 -loleaut32 -lwinmm -luuid -lstdc++
 
 #include <stdlib.h>
+#include <stdio.h>
 #include "wasapi_capture.h"
 
+// 声明Go回调函数，这是由Go导出到C的函数
 extern void goAudioCallback(void* user_data, float* buffer, int frames);
 */
 import "C"
@@ -60,27 +62,55 @@ type windowsCapture struct {
 
 //export goAudioCallback
 func goAudioCallback(userData unsafe.Pointer, buffer *C.float, frames C.int) {
+	fmt.Printf("Go callback entered: userData=%v, buffer=%v, frames=%d\n", userData, buffer, frames)
+
 	if userData == nil {
+		fmt.Println("Warning: userData is nil in goAudioCallback")
 		return
 	}
 
 	// 从用户数据中获取回调ID
 	callbackID := uintptr(userData)
+	fmt.Printf("Callback ID: %d\n", callbackID)
 
 	// 获取回调函数
 	callback := getCallback(callbackID)
 	if callback == nil {
+		fmt.Println("Warning: callback not found for ID:", callbackID)
 		return
 	}
 
+	// 检查帧数是否有效
+	if frames <= 0 {
+		fmt.Println("Warning: received 0 frames in goAudioCallback")
+		return
+	}
+
+	fmt.Printf("Go callback processing %d frames\n", int(frames))
+
 	// Convert C array to Go slice
 	data := unsafe.Slice((*float32)(unsafe.Pointer(buffer)), int(frames))
+
+	// 检查数据是否有效
+	hasAudio := false
+	for _, sample := range data {
+		if sample > 0.01 || sample < -0.01 {
+			hasAudio = true
+			break
+		}
+	}
+	if !hasAudio {
+		fmt.Print("S") // 静音数据
+	} else {
+		fmt.Print("A") // 有效音频数据
+	}
 
 	// Make a copy of the data to avoid race conditions
 	dataCopy := make([]float32, len(data))
 	copy(dataCopy, data)
 
 	// Call the user callback
+	fmt.Println("Calling user callback with", len(dataCopy), "samples")
 	callback(dataCopy)
 }
 
@@ -150,12 +180,14 @@ func (c *windowsCapture) SetCallback(callback AudioCallback) {
 	// 注册新的回调
 	if callback != nil {
 		c.callbackID = registerCallback(callback)
+		fmt.Printf("Registered callback with ID: %d\n", c.callbackID)
 	}
 
 	c.mu.Unlock()
 
 	if c.handle != nil && c.callbackID != 0 {
-		// 直接使用回调ID作为用户数据
+		// 直接使用goAudioCallback函数
+		fmt.Printf("Setting C callback with user data: %v\n", unsafe.Pointer(c.callbackID))
 		C.wasapi_capture_set_callback(c.handle, (*[0]byte)(C.goAudioCallback), unsafe.Pointer(c.callbackID))
 	} else if c.handle != nil {
 		// 清除回调

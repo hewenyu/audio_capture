@@ -100,8 +100,17 @@ public:
     }
 
     void set_callback(audio_callback callback, void* user_data) {
+        std::cout << "C++: Setting callback function: " << (void*)callback << ", user_data: " << user_data << std::endl;
         callback_ = callback;
         user_data_ = user_data;
+        
+        // 测试回调是否有效
+        if (callback_ && user_data_) {
+            std::cout << "C++: Testing callback with dummy data..." << std::endl;
+            float test_data[10] = {0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.0f};
+            callback_(user_data_, test_data, 10);
+            std::cout << "C++: Test callback completed" << std::endl;
+        }
     }
 
     int get_applications(AudioAppInfo* apps, int max_count) {
@@ -171,16 +180,24 @@ public:
                 nullptr,
                 (void**)&session_manager_
             );
-            if (FAILED(hr)) return false;
+            if (FAILED(hr)) {
+                std::cerr << "Failed to activate audio session manager: 0x" << std::hex << hr << std::endl;
+                return false;
+            }
         }
 
         IAudioSessionEnumerator* session_enumerator = nullptr;
         HRESULT hr = session_manager_->GetSessionEnumerator(&session_enumerator);
-        if (FAILED(hr)) return false;
+        if (FAILED(hr)) {
+            std::cerr << "Failed to get session enumerator: 0x" << std::hex << hr << std::endl;
+            return false;
+        }
 
         int session_count = 0;
         session_enumerator->GetCount(&session_count);
+        std::cout << "Looking for process ID: " << target_pid << " among " << session_count << " sessions" << std::endl;
 
+        bool found_process = false;
         for (int i = 0; i < session_count; i++) {
             IAudioSessionControl* session_control = nullptr;
             hr = session_enumerator->GetSession(i, &session_control);
@@ -193,16 +210,24 @@ public:
 
             DWORD process_id;
             hr = session_control2->GetProcessId(&process_id);
-            if (SUCCEEDED(hr) && process_id == target_pid) {
-                session_control2->Release();
-                session_enumerator->Release();
-                return start(); // 使用现有的start方法开始捕获
+            if (SUCCEEDED(hr)) {
+                std::cout << "Checking session " << i << " with PID: " << process_id << std::endl;
+                if (process_id == target_pid) {
+                    std::cout << "Found target process " << target_pid << ", starting capture" << std::endl;
+                    found_process = true;
+                    // 不要在这里释放资源，我们需要保持会话活动
+                    break;
+                }
             }
             session_control2->Release();
         }
 
         session_enumerator->Release();
-        return false;
+        
+        // 无论是否找到目标进程，都尝试启动捕获
+        // 这是因为WASAPI loopback捕获会捕获所有系统音频，我们只是在UI上显示特定进程
+        std::cout << "Starting audio capture" << (found_process ? " for target process" : " for system audio") << std::endl;
+        return start();
     }
 
     bool get_format(AudioFormat* format) {
@@ -250,11 +275,17 @@ private:
         stop_capture_ = false;
         float* resample_buffer = nullptr;
         size_t resample_buffer_size = 0;
+        UINT64 total_frames_captured = 0;
+
+        std::cout << "Audio capture thread started" << std::endl;
 
         while (!stop_capture_) {
             UINT32 packet_length = 0;
             HRESULT hr = capture_client_->GetNextPacketSize(&packet_length);
-            if (FAILED(hr)) break;
+            if (FAILED(hr)) {
+                std::cerr << "Failed to get next packet size: 0x" << std::hex << hr << std::endl;
+                break;
+            }
 
             if (packet_length == 0) {
                 Sleep(10);
@@ -266,57 +297,110 @@ private:
             DWORD flags;
 
             hr = capture_client_->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
-            if (FAILED(hr)) break;
+            if (FAILED(hr)) {
+                std::cerr << "Failed to get buffer: 0x" << std::hex << hr << std::endl;
+                break;
+            }
 
-            if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT) && callback_) {
-                float* audio_data = (float*)data;
-                int channels = mix_format_->nChannels;
-                int original_sample_rate = mix_format_->nSamplesPerSec;
+            if (frames > 0) {
+                total_frames_captured += frames;
                 
-                // 计算重采样后的帧数
-                int resampled_frames = (int)((float)frames * 16000 / original_sample_rate);
-                
-                // 确保重采样缓冲区足够大
-                if (resample_buffer_size < resampled_frames) {
-                    delete[] resample_buffer;
-                    resample_buffer_size = resampled_frames;
-                    resample_buffer = new float[resample_buffer_size];
+                // 每捕获约1秒数据打印一次日志
+                if (total_frames_captured % (mix_format_->nSamplesPerSec) < frames) {
+                    std::cout << "Captured " << total_frames_captured << " frames so far" << std::endl;
                 }
-
-                // 首先转换为单声道
-                float* mono_data = new float[frames];
-                for (UINT32 i = 0; i < frames; i++) {
-                    float sum = 0;
-                    for (int ch = 0; ch < channels; ch++) {
-                        sum += audio_data[i * channels + ch];
+                
+                // 即使标记为静音，也尝试处理数据
+                // 移除 !(flags & AUDCLNT_BUFFERFLAGS_SILENT) 条件
+                if (callback_) {
+                    float* audio_data = (float*)data;
+                    int channels = mix_format_->nChannels;
+                    int original_sample_rate = mix_format_->nSamplesPerSec;
+                    
+                    // 检查是否有有效音频数据
+                    bool has_audio = false;
+                    for (UINT32 i = 0; i < frames * channels; i++) {
+                        if (audio_data[i] > 0.01f || audio_data[i] < -0.01f) {
+                            has_audio = true;
+                            break;
+                        }
                     }
-                    mono_data[i] = sum / channels;
-                }
-
-                // 线性插值重采样到16kHz
-                for (int i = 0; i < resampled_frames; i++) {
-                    float position = (float)i * original_sample_rate / 16000;
-                    int index = (int)position;
-                    float fraction = position - index;
-
-                    if (index >= frames - 1) {
-                        resample_buffer[i] = mono_data[frames - 1];
+                    
+                    if (!has_audio) {
+                        std::cout << "S"; // 静音数据
                     } else {
-                        resample_buffer[i] = mono_data[index] * (1 - fraction) + 
-                                           mono_data[index + 1] * fraction;
+                        std::cout << "+"; // 有效数据
                     }
-                }
+                    
+                    // 计算重采样后的帧数
+                    int resampled_frames = (int)((float)frames * 16000 / original_sample_rate);
+                    
+                    // 确保重采样缓冲区足够大
+                    if (resample_buffer_size < resampled_frames) {
+                        delete[] resample_buffer;
+                        resample_buffer_size = resampled_frames;
+                        resample_buffer = new float[resample_buffer_size];
+                    }
 
-                // 调用回调函数
-                callback_(user_data_, resample_buffer, resampled_frames);
-                
-                delete[] mono_data;
+                    // 首先转换为单声道
+                    float* mono_data = new float[frames];
+                    for (UINT32 i = 0; i < frames; i++) {
+                        float sum = 0;
+                        for (int ch = 0; ch < channels; ch++) {
+                            sum += audio_data[i * channels + ch];
+                        }
+                        mono_data[i] = sum / channels;
+                    }
+
+                    // 线性插值重采样到16kHz
+                    for (int i = 0; i < resampled_frames; i++) {
+                        float position = (float)i * original_sample_rate / 16000;
+                        int index = (int)position;
+                        float fraction = position - index;
+
+                        if (index >= frames - 1) {
+                            resample_buffer[i] = mono_data[frames - 1];
+                        } else {
+                            resample_buffer[i] = mono_data[index] * (1 - fraction) + 
+                                               mono_data[index + 1] * fraction;
+                        }
+                    }
+
+                    // 确保回调函数被调用，即使数据是静音的
+                    std::cout << "Calling callback with " << resampled_frames << " frames" << std::endl;
+                    
+                    // 直接打印回调函数地址和用户数据，用于调试
+                    std::cout << "Callback function: " << (void*)callback_ << ", User data: " << user_data_ << std::endl;
+                    
+                    // 确保回调函数和用户数据都有效
+                    if (callback_ && user_data_) {
+                        try {
+                            std::cout << "C++: Calling callback..." << std::endl;
+                            callback_(user_data_, resample_buffer, resampled_frames);
+                            std::cout << "C++: Callback completed successfully" << std::endl;
+                        } catch (const std::exception& e) {
+                            std::cerr << "C++: Exception in callback: " << e.what() << std::endl;
+                        } catch (...) {
+                            std::cerr << "C++: Unknown exception in callback" << std::endl;
+                        }
+                    } else {
+                        std::cerr << "Warning: Invalid callback or user data" << std::endl;
+                    }
+                    
+                    delete[] mono_data;
+                } else {
+                    std::cout << "-"; // 无回调
+                }
             }
 
             hr = capture_client_->ReleaseBuffer(frames);
-            if (FAILED(hr)) break;
+            if (FAILED(hr)) {
+                std::cerr << "Failed to release buffer: 0x" << std::hex << hr << std::endl;
+                break;
+            }
         }
 
+        std::cout << "\nAudio capture thread stopped, captured " << total_frames_captured << " frames in total" << std::endl;
         delete[] resample_buffer;
         return 0;
     }

@@ -88,6 +88,7 @@ func main() {
 	var totalSamples int
 	var dataReceived bool
 	var callbackCount int
+	var totalBytesWritten int
 
 	// 启动一个 goroutine 来处理音频数据
 	go func() {
@@ -102,12 +103,27 @@ func main() {
 			case data, ok := <-audioChan:
 				if !ok {
 					// 通道已关闭，退出循环
-					fmt.Printf("\n通道已关闭，总共处理了 %d 个采样点\n", sampleCount)
+					fmt.Printf("\n通道已关闭，总共处理了 %d 个采样点，写入了 %d 字节\n", sampleCount, totalBytesWritten)
 					return
 				}
 
 				dataReceived = true
 				fmt.Printf("\n收到音频数据: %d 个采样点", len(data))
+
+				// 检查数据是否有效
+				hasAudio := false
+				for _, sample := range data {
+					if sample > 0.01 || sample < -0.01 {
+						hasAudio = true
+						break
+					}
+				}
+
+				if !hasAudio {
+					fmt.Print(" (静音)")
+				} else {
+					fmt.Print(" (有声音)")
+				}
 
 				// 写入 WAV 文件
 				if err := wavWriter.WriteFloat32(data); err != nil {
@@ -115,12 +131,16 @@ func main() {
 					continue
 				}
 
+				// 更新计数器
 				sampleCount += len(data)
+				bytesWritten := len(data) * 2 // 16位采样 = 2字节/采样
+				totalBytesWritten += bytesWritten
+
 				elapsed := time.Since(startTime)
 
 				// 显示进度
 				fmt.Printf("\r已录制 %.1f 秒 (%d 个采样点, 数据大小: %d 字节)",
-					elapsed.Seconds(), sampleCount, sampleCount*2) // 假设 16 位采样
+					elapsed.Seconds(), sampleCount, totalBytesWritten)
 
 			case <-stopChan:
 				// 收到停止信号，但继续处理通道中的剩余数据
@@ -128,18 +148,22 @@ func main() {
 
 				// 排空通道中的所有数据
 				drainedCount := 0
+				drainedBytes := 0
 				for data := range audioChan {
 					if err := wavWriter.WriteFloat32(data); err != nil {
 						fmt.Printf("\n写入 WAV 文件失败: %v\n", err)
 					} else {
 						sampleCount += len(data)
 						drainedCount += len(data)
+						bytes := len(data) * 2 // 16位采样 = 2字节/采样
+						drainedBytes += bytes
+						totalBytesWritten += bytes
 					}
 				}
-				fmt.Printf("\n排空通道，处理了额外的 %d 个采样点\n", drainedCount)
+				fmt.Printf("\n排空通道，处理了额外的 %d 个采样点 (%d 字节)\n", drainedCount, drainedBytes)
 
 				// 确保 WAV 文件正确关闭
-				fmt.Printf("\n关闭 WAV 文件，总共写入了 %d 个采样点\n", sampleCount)
+				fmt.Printf("\n关闭 WAV 文件，总共写入了 %d 个采样点 (%d 字节)\n", sampleCount, totalBytesWritten)
 				if err := wavWriter.Close(); err != nil {
 					fmt.Printf("\n关闭 WAV 文件失败: %v\n", err)
 				}
@@ -171,7 +195,8 @@ func main() {
 
 		if !hasAudio {
 			fmt.Print("S") // 表示静音数据
-			return
+		} else {
+			fmt.Print("+") // 表示有声音数据
 		}
 
 		// 复制数据并发送到通道
@@ -181,10 +206,10 @@ func main() {
 
 		select {
 		case audioChan <- dataCopy:
-			fmt.Print("+") // 表示数据已发送
+			// 数据已发送
 		default:
 			// 通道已满，丢弃数据
-			fmt.Print("-") // 表示数据被丢弃
+			fmt.Print("D") // 表示数据被丢弃
 		}
 	})
 
