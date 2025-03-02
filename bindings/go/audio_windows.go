@@ -1,6 +1,6 @@
 //go:build windows
 
-package api
+package audio
 
 /*
 #cgo CXXFLAGS: -std=c++11 -DWIN32_LEAN_AND_MEAN

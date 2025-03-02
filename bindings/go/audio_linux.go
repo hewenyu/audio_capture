@@ -1,6 +1,6 @@
 //go:build linux
 
-package api
+package go
 
 /*
 #cgo LDFLAGS: -lpulse -lpulse-simple

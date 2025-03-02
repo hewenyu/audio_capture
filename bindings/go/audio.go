@@ -1,4 +1,4 @@
-package api
+package audio
 
 // AudioFormat 表示音频格式
 type AudioFormat struct {

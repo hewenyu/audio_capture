@@ -1,118 +1,79 @@
-# Go parameters
-GOCMD=go
-GOBUILD=$(GOCMD) build
-GOCLEAN=$(GOCMD) clean
-GOTEST=$(GOCMD) test
-GOGET=$(GOCMD) get
-GOMOD=$(GOCMD) mod
-
-# Output binary names
-BINARY_NAME_WIN=wasapi_capture.dll
-BINARY_NAME_LINUX=libpulse_capture.so
-GO_BINARY=audio_capture
-
-# Build directory
-BUILD_DIR=build
-
-# C++ compiler settings
-CXX=g++
-CXXFLAGS=-std=c++11 -DWIN32_LEAN_AND_MEAN -DINITGUID
-LDFLAGS_WIN=-shared -lole32 -loleaut32 -lwinmm -luuid -ladvapi32 -lstdc++
-LDFLAGS_LINUX=-shared -lpulse -lpulse-simple
-
-# Detect OS
-ifeq ($(OS),Windows_NT)
-	PLATFORM=windows
-	BINARY_NAME=$(BINARY_NAME_WIN)
-	CXXFLAGS+=-mwindows -municode
-	LDFLAGS=$(LDFLAGS_WIN)
-else
-	PLATFORM=linux
-	BINARY_NAME=$(BINARY_NAME_LINUX)
-	LDFLAGS=$(LDFLAGS_LINUX)
+ifndef UNAME_S
+UNAME_S := $(shell uname -s)
 endif
 
-.PHONY: all build clean test deps windows linux install uninstall
+ifndef UNAME_P
+UNAME_P := $(shell uname -p)
+endif
+
+ifndef UNAME_M
+UNAME_M := $(shell uname -m)
+endif
+
+# Platform detection
+ifeq ($(OS),Windows_NT)
+    PLATFORM := windows
+    LIB_EXT := .dll
+    LIB_PREFIX :=
+    TARGET := wasapi_capture
+else
+    PLATFORM := linux
+    LIB_EXT := .so
+    LIB_PREFIX := lib
+    TARGET := pulse_capture
+endif
+
+# Directories
+BUILD_DIR := build
+C_DIR := c
+BINDINGS_DIR := bindings
 
 # Default target
-all: deps build
+all: c-lib bindings examples
 
-# Build target
-build: $(BUILD_DIR)/$(BINARY_NAME)
-
-# Windows specific build
-windows: PLATFORM=windows
-windows: BINARY_NAME=$(BINARY_NAME_WIN)
-windows: LDFLAGS=$(LDFLAGS_WIN)
-windows: build
-
-# Linux specific build
-linux: PLATFORM=linux
-linux: BINARY_NAME=$(BINARY_NAME_LINUX)
-linux: LDFLAGS=$(LDFLAGS_LINUX)
-linux: build
-
-# Create build directory
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
-
-# Build the C++ library
-$(BUILD_DIR)/$(BINARY_NAME): $(BUILD_DIR)
+# Build C libraries
+c-lib: mkdir
+	@echo "Building C libraries for $(PLATFORM)"
 ifeq ($(PLATFORM),windows)
-	$(CXX) $(CXXFLAGS) -c -o $(BUILD_DIR)/wasapi_capture.o c/windows/wasapi_capture.cpp
-	$(CXX) -shared -o $(BUILD_DIR)/$(BINARY_NAME) $(BUILD_DIR)/wasapi_capture.o $(LDFLAGS)
+	@${MAKE} -C $(C_DIR)/windows
 else
-	$(CXX) $(CXXFLAGS) -c -o $(BUILD_DIR)/pulse_capture.o c/linux/pulse_capture.c
-	$(CXX) -shared -o $(BUILD_DIR)/$(BINARY_NAME) $(BUILD_DIR)/pulse_capture.o $(LDFLAGS)
+	@${MAKE} -C $(C_DIR)/linux
 endif
 
-# Build Go example
-example: build
-	$(GOBUILD) -o $(BUILD_DIR)/$(GO_BINARY) ./examples/main.go
+# Build language bindings
+bindings: c-lib
+	@echo "Building language bindings"
+	@${MAKE} -C $(BINDINGS_DIR)/go
 
-# Clean build files
-clean:
-	$(GOCLEAN)
-	rm -rf $(BUILD_DIR)
+# Build examples
+examples: bindings
+	@echo "Building examples"
+	@${MAKE} -C $(BINDINGS_DIR)/go examples
 
 # Run tests
-test:
-	$(GOTEST) -v ./...
+test: c-lib
+	@echo "Running tests"
+	@${MAKE} -C $(BINDINGS_DIR)/go test
 
-# Get dependencies
-deps:
-	$(GOMOD) download
-	$(GOMOD) tidy
-
-# Install the library and binary
-install: build
+# Create build directory
+mkdir:
+	@echo "Creating build directory"
+	@install -d $(BUILD_DIR)
 ifeq ($(PLATFORM),windows)
-	cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/
+	@install -d $(BUILD_DIR)/windows
 else
-	sudo cp $(BUILD_DIR)/$(BINARY_NAME) /usr/lib/
-	sudo ldconfig
+	@install -d $(BUILD_DIR)/linux
 endif
 
-# Uninstall the library and binary
-uninstall:
+# Clean everything
+clean:
+	@echo "Cleaning all build artifacts"
+	@rm -rf $(BUILD_DIR)
 ifeq ($(PLATFORM),windows)
-	rm -f $(GOPATH)/bin/$(BINARY_NAME)
+	@${MAKE} -C $(C_DIR)/windows clean
 else
-	sudo rm -f /usr/lib/$(BINARY_NAME)
-	sudo ldconfig
+	@${MAKE} -C $(C_DIR)/linux clean
 endif
+	@${MAKE} -C $(BINDINGS_DIR)/go clean
 
-# Help target
-help:
-	@echo "Available targets:"
-	@echo "  all        - Download dependencies and build the library (default)"
-	@echo "  build      - Build the library for current platform"
-	@echo "  windows    - Build specifically for Windows"
-	@echo "  linux      - Build specifically for Linux"
-	@echo "  example    - Build the example program"
-	@echo "  clean      - Remove build artifacts"
-	@echo "  test       - Run tests"
-	@echo "  deps       - Download and update dependencies"
-	@echo "  install    - Install the library to system"
-	@echo "  uninstall  - Remove the library from system"
-	@echo "  help       - Show this help message" 
+.PHONY: all c-lib bindings examples test mkdir clean 
