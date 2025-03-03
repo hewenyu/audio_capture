@@ -1,13 +1,9 @@
 name: Build and Release
 
 on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
   workflow_call:
+  tags:
+    - v*.*.*
 
 jobs:
   windows:
