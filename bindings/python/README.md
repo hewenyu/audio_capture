@@ -9,16 +9,25 @@
 - 获取可用应用程序列表
 - 获取音频格式信息
 - 通过回调函数处理实时音频数据
+- 支持保存为WAV文件
 
 ## 安装
 
-### 从PyPI安装
+### 从GitHub Releases安装
+
+最简单的方法是从GitHub Releases页面下载预编译的wheel文件：
+
+1. 访问 [GitHub Releases](https://github.com/hewenyu/audio_capture/releases) 页面
+2. 下载适合你的Python版本的wheel文件
+3. 使用pip安装下载的wheel文件：
 
 ```bash
-pip install audio-capture
+pip install audio_capture-0.1.0-cp39-cp39-win_amd64.whl
 ```
 
 ### 从源代码安装
+
+如果你想从源代码构建，请按照以下步骤操作：
 
 1. 克隆仓库
 
@@ -34,6 +43,13 @@ cd bindings/python
 python build_wheel.py
 pip install dist/audio_capture-0.1.0-*.whl
 ```
+
+#### 构建要求
+
+- Windows 10或更高版本
+- Python 3.8或更高版本
+- MinGW-w64 (MSYS2)
+- CMake 3.12或更高版本
 
 ## 快速开始
 
@@ -114,6 +130,75 @@ if audio_capture.init(audio_callback):
     audio_capture.cleanup()
 ```
 
+## 保存音频到WAV文件
+
+以下示例展示如何捕获音频并保存为WAV文件：
+
+```python
+import audio_capture
+import numpy as np
+import time
+import wave
+import struct
+
+# 全局变量存储音频数据
+all_audio = []
+
+# 定义音频回调函数
+def audio_callback(buffer, user_data):
+    global all_audio
+    if len(buffer) > 0:
+        all_audio.extend(buffer)
+
+# 保存为WAV文件
+def save_to_wav(filename, data, sample_rate, channels, bits_per_sample):
+    with wave.open(filename, 'wb') as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(bits_per_sample // 8)
+        wav_file.setframerate(sample_rate)
+        
+        # 将浮点数据转换为整数
+        max_amplitude = 2 ** (bits_per_sample - 1) - 1
+        data_int = [int(sample * max_amplitude) for sample in data]
+        
+        # 打包为二进制数据
+        if bits_per_sample == 16:
+            packed_data = struct.pack(f"<{len(data_int)}h", *data_int)
+        elif bits_per_sample == 32:
+            packed_data = struct.pack(f"<{len(data_int)}i", *data_int)
+        else:
+            raise ValueError(f"不支持的位深度: {bits_per_sample}")
+        
+        wav_file.writeframes(packed_data)
+
+# 初始化音频捕获
+if audio_capture.init(audio_callback):
+    # 获取音频格式
+    format_info = audio_capture.get_format()
+    sample_rate = format_info['sample_rate']
+    channels = format_info['channels']
+    bits_per_sample = format_info['bits_per_sample']
+    
+    # 开始捕获系统音频
+    if audio_capture.start():
+        print("开始捕获音频，将录制5秒...")
+        
+        # 录制5秒
+        time.sleep(5)
+        
+        # 停止捕获
+        audio_capture.stop()
+        
+        # 保存为WAV文件
+        if all_audio:
+            filename = "recorded_audio.wav"
+            save_to_wav(filename, all_audio, sample_rate, channels, bits_per_sample)
+            print(f"音频已保存到 {filename}")
+    
+    # 清理资源
+    audio_capture.cleanup()
+```
+
 ## 获取音频格式
 
 你可以获取捕获的音频格式信息：
@@ -167,7 +252,20 @@ def audio_callback(buffer, user_data):
 
 ## 示例
 
-查看 `examples` 目录中的示例脚本，了解更多使用方法。
+查看 `examples` 目录中的示例脚本，了解更多使用方法：
+
+- `capture_example.py` - 基本的音频捕获示例
+- `save_wav_example.py` - 捕获音频并保存为WAV文件
+
+## 自动构建
+
+本项目使用GitHub Actions自动构建Windows平台的Python wheel包。每当发布新版本（推送版本标签如`v0.1.0`）时，会自动构建并发布wheel包到GitHub Releases页面。
+
+支持的Python版本：
+- Python 3.8
+- Python 3.9
+- Python 3.10
+- Python 3.11
 
 ## 许可证
 

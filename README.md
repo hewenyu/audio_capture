@@ -10,21 +10,56 @@
   - macOS: 使用CoreAudio (计划中)
 - **多语言绑定**：
   - [Go语言绑定](./bindings/go/)
-  - [Python语言绑定](./bindings/python/) (计划中)
+  - [Python语言绑定](./bindings/python/)
 - **应用程序级别捕获**：可以选择捕获特定应用程序的音频输出
 - **高性能**：使用底层音频API，低延迟，低CPU占用
 - **简单易用的API**：提供简洁的接口，易于集成到各种应用中
 
 ## 系统要求
 
-- **Windows**：Windows 7及以上版本
+- **Windows**：Windows 10及以上版本
 - **编译工具**：
   - Windows: MinGW-w64或Visual Studio
   - Go 1.21或更高版本（用于Go绑定）
+  - Python 3.8或更高版本（用于Python绑定）
+  - CMake 3.12或更高版本（用于Python绑定）
 
 ## 安装指南
 
-### Go模块安装（推荐）
+### Python模块安装
+
+#### 从GitHub Releases安装
+
+最简单的方法是从GitHub Releases页面下载预编译的wheel文件：
+
+1. 访问 [GitHub Releases](https://github.com/hewenyu/audio_capture/releases) 页面
+2. 下载适合你的Python版本的wheel文件
+3. 使用pip安装下载的wheel文件：
+
+```bash
+pip install audio_capture-0.1.0-cp39-cp39-win_amd64.whl
+```
+
+#### 从源代码构建
+
+如果你想从源代码构建Python绑定，请按照以下步骤操作：
+
+1. 克隆仓库：
+```bash
+git clone https://github.com/hewenyu/audio_capture.git
+cd audio_capture
+```
+
+2. 构建并安装Python绑定：
+```bash
+cd bindings/python
+python build_wheel.py
+pip install dist/audio_capture-0.1.0-*.whl
+```
+
+详细的Python绑定文档请参阅[Python绑定README](./bindings/python/README.md)。
+
+### Go模块安装
 
 本库使用Go模块系统，可以直接通过`go get`命令安装：
 
@@ -67,6 +102,41 @@ mingw32-make
 
 ### 在项目中使用
 
+#### Python
+
+```python
+import audio_capture
+import numpy as np
+import time
+
+# 定义音频回调函数
+def audio_callback(buffer, user_data):
+    # buffer是一个包含音频数据的NumPy数组
+    if len(buffer) > 0:
+        rms = np.sqrt(np.mean(np.square(buffer)))
+        print(f"音频数据: RMS={rms:.4f}, 样本数={len(buffer)}")
+
+# 初始化音频捕获
+if audio_capture.init(audio_callback):
+    # 开始捕获系统音频
+    if audio_capture.start():
+        print("开始捕获音频...")
+        
+        # 运行10秒
+        try:
+            time.sleep(10)
+        except KeyboardInterrupt:
+            print("用户中断")
+        
+        # 停止捕获
+        audio_capture.stop()
+    
+    # 清理资源
+    audio_capture.cleanup()
+```
+
+#### Go
+
 在你的`go.mod`文件中添加依赖：
 
 ```
@@ -76,6 +146,10 @@ require github.com/hewenyu/audio_capture/bindings/go v0.1.0
 或者使用`go mod tidy`自动添加依赖。
 
 ## 快速开始
+
+### 使用Python绑定
+
+详细的Python绑定使用指南请参阅[Python绑定README](./bindings/python/README.md)。
 
 ### 使用Go绑定
 
@@ -186,17 +260,10 @@ capture.SetCallback(func(data []float32) {
 
 ### 完整示例应用
 
-项目包含一个完整的示例应用，可以捕获特定应用程序的音频并保存为WAV文件：
+项目包含完整的示例应用，可以捕获特定应用程序的音频并保存为WAV文件：
 
-```bash
-# 克隆仓库（如果你还没有）
-git clone https://github.com/hewenyu/audio_capture.git
-cd audio_capture
-
-# 运行示例应用
-cd bindings/go/examples/app_capture
-go run main.go
-```
+- **Go示例**：`bindings/go/examples/app_capture`
+- **Python示例**：`bindings/python/examples/capture_example.py`
 
 ## 项目结构
 
@@ -210,9 +277,20 @@ audio_capture/
 │   ├── go/                 # Go语言绑定
 │   │   ├── pkg/audio/      # Go API
 │   │   └── examples/       # 示例应用
-│   └── python/             # Python语言绑定(计划中)
+│   └── python/             # Python语言绑定
+│       ├── audio_capture/  # Python模块
+│       └── examples/       # 示例应用
 └── tests/                  # 测试代码
 ```
+
+## 自动构建
+
+本项目使用GitHub Actions自动构建：
+
+- **Python绑定**：自动构建Windows平台的Python wheel包，支持Python 3.8-3.11
+- **Go绑定**：自动构建Windows平台的Go模块
+
+每当发布新版本（推送版本标签如`v0.1.0`）时，会自动构建并发布到GitHub Releases页面。
 
 ## 技术细节
 
@@ -245,7 +323,7 @@ audio_capture/
 
 #### 找不到预编译库
 
-如果Go无法找到预编译的库文件：
+如果无法找到预编译的库文件：
 
 1. 确保使用的是最新版本的模块
 2. 尝试手动编译（见上文"手动编译"部分）
