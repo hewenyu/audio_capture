@@ -45,3 +45,5 @@ reference_project/
 bindings/go/**/*.h
 
 *.log
+
+bindings\python\audio_capture
