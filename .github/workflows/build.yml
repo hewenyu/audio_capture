@@ -3,15 +3,18 @@ name: Build and Release
 on:
   workflow_dispatch:  # 允许手动触发
   push:
-    tags:
-      - 'v*.*.*'  # 当推送版本标签时触发，例如 v0.1.0
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  tags:
+    - 'v*.*.*'  # 当推送版本标签时触发，例如 v0.1.0
 
 jobs:
   windows:
     runs-on: windows-latest
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.11','3.12']
     
     steps:
     - name: Checkout code
@@ -31,10 +34,6 @@ jobs:
           mingw-w64-ucrt-x86_64-gcc
           mingw-w64-ucrt-x86_64-cmake
           mingw-w64-ucrt-x86_64-toolchain
-          
-    - name: Add MSYS2 to PATH
-      run: |
-        echo "C:\msys64\ucrt64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
         
     - name: Install Python dependencies
       run: |
@@ -42,30 +41,32 @@ jobs:
         python -m pip install setuptools wheel build numpy cmake
         
     - name: Build C++ library
-      shell: cmd
+      shell: msys2 {0}
       run: |
-        cd c\windows
-        if not exist build mkdir build
+        cd c/windows
+        mkdir -p build
         cd build
         cmake .. -G "MinGW Makefiles"
         cmake --build . --config Release
         
     - name: Build Python wheel
+      shell: msys2 {0}
       run: |
-        cd bindings/python
-        python build_wheel.py
+        # Use the modified setup.py to build the wheel with DLLs included
+        "${pythonLocation}/python.exe" bindings/python/setup.py bdist_wheel
+
         
     - name: Test wheel installation
       run: |
-        cd bindings/python/dist
-        pip install *.whl
-        python -c "import audio_capture; print(audio_capture.__version__)"
+        cd bindings/python
+        pip install --force-reinstall dist/*.whl
+        python -c "import audio_capture; print('Audio Capture module loaded successfully')"
         
     - name: Upload wheel artifact
       uses: actions/upload-artifact@v4
       with:
         name: audio_capture-win-py${{ matrix.python-version }}
-        path: bindings/python/dist/*.whl
+        path: dist/*.whl
 
         
   release:
@@ -78,6 +79,13 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      
+    - name: Get version from tag
+      id: get_version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+        echo "Version: $VERSION"
      
     - name: Download all artifacts
       uses: actions/download-artifact@v4
@@ -99,7 +107,7 @@ jobs:
           artifacts/**/*.whl
         body: |
           ## Windows Wheels
-          - Python 3.8, 3.9, 3.10, 3.11 wheels for Windows (64-bit)
+          - Python 3.11, 3.12 wheels for Windows (64-bit)
           
           ## Installation
           ```
