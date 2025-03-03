@@ -1,147 +1,129 @@
 import os
+import re
 import sys
 import platform
+import subprocess
 import shutil
-from setuptools import setup, find_packages, Extension
-from setuptools.command.build_py import build_py
-from wheel.bdist_wheel import bdist_wheel
+import glob
 
-# Debug information
-def debug_print(msg):
-    print(f"DEBUG: {msg}")
+from setuptools import setup, Extension, find_packages
+from setuptools.command.build_ext import build_ext
+from distutils.version import LooseVersion
 
-# Get Python version information
-python_version = platform.python_version()
-python_major_minor = '.'.join(python_version.split('.')[:2])  # e.g. 3.11
-debug_print(f"Python version: {python_version}")
-debug_print(f"Python major.minor: {python_major_minor}")
 
-# Get platform information
-system_platform = platform.system()
-machine = platform.machine()
-platform_tag = f"{system_platform.lower()}_{machine.lower()}"
-debug_print(f"Platform: {system_platform}")
-debug_print(f"Machine: {machine}")
-debug_print(f"Platform tag: {platform_tag}")
+class CMakeExtension(Extension):
+    def __init__(self, name, sourcedir=''):
+        Extension.__init__(self, name, sources=[])
+        self.sourcedir = os.path.abspath(sourcedir)
 
-# Get project root directory path
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../.."))
 
-debug_print(f"SCRIPT_DIR: {SCRIPT_DIR}")
-debug_print(f"ROOT_DIR: {ROOT_DIR}")
+class CMakeBuild(build_ext):
+    def run(self):
+        try:
+            out = subprocess.check_output(['cmake', '--version'])
+        except OSError:
+            raise RuntimeError("CMake must be installed to build the following extensions: " +
+                               ", ".join(e.name for e in self.extensions))
 
-# Check if C interface DLL exists
-C_INTERFACE_DLL = os.path.join(SCRIPT_DIR, "audio_capture_c.dll")
-if not os.path.exists(C_INTERFACE_DLL):
-    raise RuntimeError(
-        f"C interface DLL not found at {C_INTERFACE_DLL}. "
-        "Please build the C interface DLL first."
-    )
-else:
-    debug_print(f"Found C interface DLL at {C_INTERFACE_DLL}")
-
-# Check if audio_capture.py exists
-AUDIO_CAPTURE_PY = os.path.join(SCRIPT_DIR, "audio_capture.py")
-if not os.path.exists(AUDIO_CAPTURE_PY):
-    raise RuntimeError(f"audio_capture.py not found at {AUDIO_CAPTURE_PY}")
-else:
-    debug_print(f"Found audio_capture.py at {AUDIO_CAPTURE_PY}")
-
-# Check if dependency DLLs exist
-required_dlls = [
-    "libgcc_s_seh-1.dll",
-    "libstdc++-6.dll",
-    "libwinpthread-1.dll"
-]
-
-# Create package directory structure
-package_dir = os.path.join(SCRIPT_DIR, "audio_capture")
-if not os.path.exists(package_dir):
-    os.makedirs(package_dir)
-    debug_print(f"Created package directory: {package_dir}")
-
-# Create __init__.py file
-init_file = os.path.join(package_dir, "__init__.py")
-with open(init_file, "w") as f:
-    f.write("# Audio Capture Package\n")
-    f.write("from .audio_capture import *\n")
-    f.write("__version__ = '0.1.0'\n")
-debug_print(f"Created __init__.py at {init_file}")
-
-# Copy audio_capture.py to package directory
-shutil.copy2(AUDIO_CAPTURE_PY, package_dir)
-debug_print(f"Copied {AUDIO_CAPTURE_PY} to {package_dir}")
-
-# Copy DLL file to package directory
-if os.path.exists(C_INTERFACE_DLL):
-    shutil.copy2(C_INTERFACE_DLL, package_dir)
-    debug_print(f"Copied {C_INTERFACE_DLL} to {package_dir}")
-
-# Copy dependency DLLs to package directory
-for dll in required_dlls:
-    dll_path = os.path.join(SCRIPT_DIR, dll)
-    if os.path.exists(dll_path):
-        shutil.copy2(dll_path, package_dir)
-        debug_print(f"Copied {dll_path} to {package_dir}")
-
-# Define package data
-package_data = {
-    'audio_capture': ['*.dll'],
-}
-
-# Read README.md
-with open(os.path.join(SCRIPT_DIR, "README.md"), encoding="utf-8") as f:
-    long_description = f.read()
-
-# Custom bdist_wheel command to set platform-specific wheel
-class BdistWheelPlatform(bdist_wheel):
-    def finalize_options(self):
-        super().finalize_options()
-        # Mark as platform-specific wheel
-        self.root_is_pure = False
-        
-    def get_tag(self):
-        # Get Python tag
-        python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
-        # Get ABI tag
-        abi_tag = "none"
-        # Get platform tag
         if platform.system() == "Windows":
-            plat_name = "win_amd64" if platform.machine().endswith('64') else "win32"
-        elif platform.system() == "Linux":
-            plat_name = "linux_x86_64" if platform.machine().endswith('64') else "linux_i686"
-        elif platform.system() == "Darwin":
-            plat_name = "macosx_10_9_x86_64" if platform.machine() == "x86_64" else "macosx_11_0_arm64"
+            cmake_version = LooseVersion(re.search(r'version\s*([\d.]+)', out.decode()).group(1))
+            if cmake_version < '3.12.0':
+                raise RuntimeError("CMake >= 3.12.0 is required on Windows")
+
+        for ext in self.extensions:
+            self.build_extension(ext)
+
+    def build_extension(self, ext):
+        extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
+        # required for auto-detection of auxiliary "native" libs
+        if not extdir.endswith(os.path.sep):
+            extdir += os.path.sep
+
+        # 构建路径是相对于 setup.py 所在目录的
+        source_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+        build_dir = os.path.join(source_dir, 'build')
+        
+        # 如果构建目录不存在，创建它
+        if not os.path.exists(build_dir):
+            os.makedirs(build_dir)
+        
+        # 确定 CMake 生成器
+        generator = "MinGW Makefiles" if platform.system() == "Windows" else "Unix Makefiles"
+        
+        # 获取 Python 可执行文件路径
+        python_executable = os.environ.get('PYTHON_PATH', sys.executable)
+        
+        cmake_args = [
+            '-G', generator,
+            '-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
+            '-DPYTHON_EXECUTABLE=' + python_executable,
+            '-DBUILD_PYTHON_BINDINGS=ON',
+            '-DCMAKE_CXX_STANDARD=17'
+        ]
+
+        cfg = 'Debug' if self.debug else 'Release'
+        build_args = ['--config', cfg]
+
+        if platform.system() == "Windows":
+            cmake_args += ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY_{}={}'.format(cfg.upper(), extdir)]
         else:
-            plat_name = "any"
+            cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
+            build_args += ['--', '-j2']
+
+        env = os.environ.copy()
+        env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
+                                                              self.distribution.get_version())
         
-        debug_print(f"Python tag: {python_tag}")
-        debug_print(f"ABI tag: {abi_tag}")
-        debug_print(f"Platform tag: {plat_name}")
+        # 执行 CMake 配置
+        subprocess.check_call(['cmake', source_dir] + cmake_args, cwd=build_dir, env=env)
         
-        return python_tag, abi_tag, plat_name
+        # 执行 CMake 构建，只构建 audio_capture 目标
+        subprocess.check_call(['cmake', '--build', '.', '--target', 'audio_capture'] + build_args, cwd=build_dir)
+        
+        # 复制必要的 MinGW DLL 到输出目录
+        if platform.system() == "Windows":
+            mingw_bin_dir = os.path.dirname(subprocess.check_output(['where', 'gcc']).decode().strip())
+            print(f"MinGW bin directory: {mingw_bin_dir}")
+            
+            # 复制必要的 DLL
+            required_dlls = [
+                'libgcc_s_seh-1.dll',
+                'libstdc++-6.dll',
+                'libwinpthread-1.dll'
+            ]
+            
+            for dll in required_dlls:
+                dll_path = os.path.join(mingw_bin_dir, dll)
+                if os.path.exists(dll_path):
+                    print(f"Copying {dll} to {extdir}")
+                    shutil.copy(dll_path, extdir)
+                else:
+                    print(f"Warning: {dll} not found in {mingw_bin_dir}")
+
+
+# 自定义安装命令，确保 DLL 被包含在 wheel 中
+from setuptools.command.install import install
+class CustomInstall(install):
+    def run(self):
+        install.run(self)
+
 
 setup(
-    name="audio_capture",
-    version="0.1.0",
-    author="hewenyu",
-    author_email="yuebanlaosiji@outlook.com",
-    description="Python bindings for audio capture library",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
-    packages=["audio_capture"],  # Use package structure instead of single module
-    package_data=package_data,
-    include_package_data=True,
-    zip_safe=False,
-    python_requires=f">={python_major_minor}",
-    install_requires=["numpy"],
+    name='audio_capture',
+    version='0.1.0',
+    author='Your Name',
+    author_email='your.email@example.com',
+    description='Audio Capture Python Bindings',
+    long_description='',
+    ext_modules=[CMakeExtension('audio_capture')],
     cmdclass={
-        'bdist_wheel': BdistWheelPlatform,
+        'build_ext': CMakeBuild,
+        'install': CustomInstall,
     },
-    classifiers=[
-        f"Programming Language :: Python :: {python_major_minor}",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: Microsoft :: Windows",
-    ],
+    zip_safe=False,
+    python_requires='>=3.8',
+    # 包含所有 DLL 文件
+    package_data={
+        '': ['*.dll'],
+    },
 ) 

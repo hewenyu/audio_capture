@@ -364,4 +364,66 @@ audio_capture/
 
 ## 贡献
 
-欢迎贡献代码、报告问题或提出改进建议。请通过GitHub Issues或Pull Requests参与项目开发。 
+欢迎贡献代码、报告问题或提出改进建议。请通过GitHub Issues或Pull Requests参与项目开发。
+
+## Python 绑定
+
+本项目现在提供了 Python 绑定，允许你在 Python 中使用音频捕获功能。
+
+### 构建 Python 绑定
+
+有两种方式构建 Python 绑定：
+
+#### 方式一：使用构建脚本
+
+最简单的方法是使用提供的构建脚本：
+
+**Windows:**
+```bash
+build_python.cmd
+```
+
+**Linux/macOS:**
+```bash
+./build_python.sh
+```
+
+#### 方式二：使用 CMake 参数
+
+你也可以直接使用 CMake 的 `BUILD_PYTHON_BINDINGS` 参数来控制是否构建 Python 绑定：
+
+```bash
+# 创建构建目录
+mkdir -p build
+cd build
+
+# 配置 CMake，启用 Python 绑定
+cmake .. -DBUILD_PYTHON_BINDINGS=ON
+
+# 构建项目
+cmake --build .
+
+# 构建 Python wheel
+cd ../bindings/python
+python build_wheel.py
+```
+
+#### 方式三：直接构建 Python wheel
+
+如果你只想构建 Python wheel，可以直接运行：
+
+```bash
+cd bindings/python
+python build_wheel.py
+pip install dist/audio_capture-0.1.0-*.whl
+```
+
+### 运行示例
+
+安装 wheel 后，你可以运行示例：
+
+```bash
+python bindings/python/examples/basic_capture.py
+```
+
+详细的 Python 绑定文档请参阅 [Python 绑定 README](./bindings/python/README.md)。 

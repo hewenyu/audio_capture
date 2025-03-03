@@ -20,24 +20,21 @@ add_definitions(
 )
 
 # 创建静态库
-add_library(wasapi_capture STATIC
-    wasapi_capture.cpp
-    wasapi_capture.h
-)
+add_library(wasapi_capture STATIC wasapi_capture.cpp)
 
 # 设置包含目录
 target_include_directories(wasapi_capture PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-# # -lole32 -loleaut32 -lwinmm -luuid -lstdc++
-# 链接必要的Windows库
-target_link_libraries(wasapi_capture PRIVATE
-    ole32
-    oleaut32
-    winmm
-    uuid
-    stdc++
+# 链接 Windows 库
+target_link_libraries(wasapi_capture PRIVATE 
+    ole32      # COM 支持
+    oleaut32   # COM 自动化
+    winmm      # Windows 多媒体
+    ksuser     # Kernel Streaming
+    avrt       # Audio/Video Runtime
+    uuid       # GUID 支持
 )
 
 # 安装规则
