@@ -6,23 +6,33 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Python configuration
-# Set Python executable path
-set(PYTHON_EXECUTABLE "C:/Users/boringsoft/AppData/Local/Programs/Python/Python311/python.exe")
-# If the above path doesn't exist, try the one provided by the user
-if(NOT EXISTS "${PYTHON_EXECUTABLE}")
-    set(PYTHON_EXECUTABLE "C:/Users/Administrator/AppData/Local/Programs/Python/Python311/python.exe")
+
+# 使用系统环境中的Python
+set(PYTHON_EXECUTABLE ${Python_EXECUTABLE})
+
+# 允许用户通过CMake参数覆盖Python路径
+if(DEFINED CUSTOM_PYTHON_EXECUTABLE AND EXISTS "${CUSTOM_PYTHON_EXECUTABLE}")
+    set(PYTHON_EXECUTABLE "${CUSTOM_PYTHON_EXECUTABLE}")
+    message(STATUS "Using custom Python executable: ${PYTHON_EXECUTABLE}")
+    
+    # 从自定义路径派生其他Python路径
+    get_filename_component(PYTHON_ROOT_DIR "${PYTHON_EXECUTABLE}" DIRECTORY)
+    
+    # 检测Python版本以确定正确的库名
+    execute_process(
+        COMMAND "${PYTHON_EXECUTABLE}" -c "import sys; print(f'{sys.version_info.major}{sys.version_info.minor}')"
+        OUTPUT_VARIABLE PYTHON_VERSION_NO_DOT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    
+    set(PYTHON_INCLUDE_DIR "${PYTHON_ROOT_DIR}/include")
+    set(PYTHON_LIBRARY "${PYTHON_ROOT_DIR}/libs/python${PYTHON_VERSION_NO_DOT}.lib")
+    
+    # 告诉pybind11使用我们指定的Python
+    set(Python_EXECUTABLE "${PYTHON_EXECUTABLE}")
+    set(Python_INCLUDE_DIRS "${PYTHON_INCLUDE_DIR}")
+    set(Python_LIBRARIES "${PYTHON_LIBRARY}")
 endif()
-
-# Set Python root directory (derived from executable path)
-get_filename_component(PYTHON_ROOT_DIR "${PYTHON_EXECUTABLE}" DIRECTORY)
-set(PYTHON_INCLUDE_DIR "${PYTHON_ROOT_DIR}/include")
-set(PYTHON_LIBRARY "${PYTHON_ROOT_DIR}/libs/python311.lib")
-
-# Tell pybind11 to use our manually specified Python
-set(PYBIND11_PYTHON_VERSION 3.11)
-set(Python_EXECUTABLE "${PYTHON_EXECUTABLE}")
-set(Python_INCLUDE_DIRS "${PYTHON_INCLUDE_DIR}")
-set(Python_LIBRARIES "${PYTHON_LIBRARY}")
 
 # Determine Python site-packages directory
 execute_process(

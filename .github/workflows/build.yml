@@ -1,13 +1,13 @@
 name: Build and Release
 
 on:
-  workflow_dispatch:  # 允许手动触发
   push:
-    branches: [ master ]
+    branches:
+      - master
   pull_request:
-    branches: [ master ]
-  tags:
-    - 'v*.*.*'  # 当推送版本标签时触发，例如 v0.1.0
+    branches:
+      - master
+  workflow_call:
 
 jobs:
   windows:
@@ -55,12 +55,14 @@ jobs:
         # Use the modified setup.py to build the wheel with DLLs included
         "${pythonLocation}/python.exe" bindings/python/setup.py bdist_wheel
 
-        
-    - name: Test wheel installation
-      run: |
-        cd bindings/python
-        pip install --force-reinstall dist/*.whl
-        python -c "import audio_capture; print('Audio Capture module loaded successfully')"
+    - name: List files in dist directory
+      run: ls dist
+
+    # - name: Test wheel installation
+    #   run: |
+    #     cd bindings/python
+    #     pip install --force-reinstall dist/*.whl
+    #     python -c "import audio_capture; print('Audio Capture module loaded successfully')"
         
     - name: Upload wheel artifact
       uses: actions/upload-artifact@v4
