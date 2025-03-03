@@ -1,0 +1,109 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:  # 允许手动触发
+  push:
+    tags:
+      - 'v*.*.*'  # 当推送版本标签时触发，例如 v0.1.0
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Set up MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        update: true
+        install: >-
+          mingw-w64-ucrt-x86_64-gcc
+          mingw-w64-ucrt-x86_64-cmake
+          mingw-w64-ucrt-x86_64-toolchain
+          
+    - name: Add MSYS2 to PATH
+      run: |
+        echo "C:\msys64\ucrt64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install setuptools wheel build numpy cmake
+        
+    - name: Build C++ library
+      shell: cmd
+      run: |
+        cd c\windows
+        if not exist build mkdir build
+        cd build
+        cmake .. -G "MinGW Makefiles"
+        cmake --build . --config Release
+        
+    - name: Build Python wheel
+      run: |
+        cd bindings/python
+        python build_wheel.py
+        
+    - name: Test wheel installation
+      run: |
+        cd bindings/python/dist
+        pip install *.whl
+        python -c "import audio_capture; print(audio_capture.__version__)"
+        
+    - name: Upload wheel artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: audio_capture-win-py${{ matrix.python-version }}
+        path: bindings/python/dist/*.whl
+
+        
+  release:
+    needs: [windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+     
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        
+    - name: Display structure of downloaded files
+      run: ls -R artifacts
+      
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v0.1.15
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        name: Release ${{ steps.get_version.outputs.VERSION }}
+        draft: false
+        prerelease: false
+        files: |
+          artifacts/**/*.whl
+        body: |
+          ## Windows Wheels
+          - Python 3.8, 3.9, 3.10, 3.11 wheels for Windows (64-bit)
+          
+          ## Installation
+          ```
+          pip install audio_capture==${{ steps.get_version.outputs.VERSION }}
+          ```
+          
+          Or download and install the appropriate wheel file for your platform and Python version.
