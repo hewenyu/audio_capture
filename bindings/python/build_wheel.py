@@ -26,8 +26,17 @@ debug_print(f"DIST_DIR: {DIST_DIR}")
 debug_print(f"PYTHON_BUILD_DIR: {PYTHON_BUILD_DIR}")
 debug_print(f"PACKAGE_DIR: {PACKAGE_DIR}")
 
+# 获取Python和平台信息
+python_version = platform.python_version()
+python_major_minor = '.'.join(python_version.split('.')[:2])
+system_platform = platform.system()
+machine = platform.machine()
+debug_print(f"Python version: {python_version}")
+debug_print(f"Platform: {system_platform}")
+debug_print(f"Machine: {machine}")
+
 # 检查是否已安装必要的包
-required_packages = ["wheel", "build", "setuptools>=42", "cmake"]
+required_packages = ["wheel>=0.36.0", "build", "setuptools>=42", "cmake"]
 for package in required_packages:
     package_name = package.split(">=")[0]
     try:
@@ -173,7 +182,8 @@ os.chdir(SCRIPT_DIR)
 print(f"当前目录: {os.getcwd()}")
 
 print("\n构建wheel包...")
-wheel_cmd = [sys.executable, "-m", "pip", "wheel", ".", "-w", "dist", "--no-deps"]
+# 使用bdist_wheel命令构建平台特定的wheel
+wheel_cmd = [sys.executable, "setup.py", "bdist_wheel", "--plat-name", f"{system_platform.lower()}_{machine.lower()}", "--python-tag", f"cp{sys.version_info.major}{sys.version_info.minor}"]
 print(f"执行命令: {' '.join(wheel_cmd)}")
 subprocess.check_call(wheel_cmd)
 

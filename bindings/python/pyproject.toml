@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=42", "wheel", "cmake>=3.12"]
+requires = ["setuptools>=42", "wheel>=0.36.0", "cmake>=3.12"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Python bindings for audio capture library"
 readme = "README.md"
 authors = [
-    {name = "hewenyu", email = "hewenyu@example.com"}
+    {name = "hewenyu", email = "yuebanlaosiji@outlook.com"}
 ]
 requires-python = ">=3.6"
 dependencies = [
@@ -19,6 +19,12 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
 ]
+
+[tool.setuptools]
+packages = ["audio_capture"]
+package-data = {audio_capture = ["*.dll"]}
+include-package-data = true
+zip-safe = false
 
 [project.urls]
 "Homepage" = "https://github.com/hewenyu/audio_capture"

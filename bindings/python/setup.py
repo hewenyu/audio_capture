@@ -2,7 +2,9 @@ import os
 import sys
 import platform
 import shutil
-from setuptools import setup, find_packages
+from setuptools import setup, find_packages, Extension
+from setuptools.command.build_py import build_py
+from wheel.bdist_wheel import bdist_wheel
 
 # 调试信息
 def debug_print(msg):
@@ -13,6 +15,14 @@ python_version = platform.python_version()
 python_major_minor = '.'.join(python_version.split('.')[:2])  # 例如 3.11
 debug_print(f"Python version: {python_version}")
 debug_print(f"Python major.minor: {python_major_minor}")
+
+# 获取平台信息
+system_platform = platform.system()
+machine = platform.machine()
+platform_tag = f"{system_platform.lower()}_{machine.lower()}"
+debug_print(f"Platform: {system_platform}")
+debug_print(f"Machine: {machine}")
+debug_print(f"Platform tag: {platform_tag}")
 
 # 获取项目根目录的相对路径
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -84,11 +94,39 @@ package_data = {
 with open(os.path.join(SCRIPT_DIR, "README.md"), encoding="utf-8") as f:
     long_description = f.read()
 
+# 自定义bdist_wheel命令，设置平台特定的wheel
+class BdistWheelPlatform(bdist_wheel):
+    def finalize_options(self):
+        super().finalize_options()
+        # 标记为平台特定的wheel
+        self.root_is_pure = False
+        
+    def get_tag(self):
+        # 获取Python标签
+        python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+        # 获取ABI标签
+        abi_tag = "none"
+        # 获取平台标签
+        if platform.system() == "Windows":
+            plat_name = "win_amd64" if platform.machine().endswith('64') else "win32"
+        elif platform.system() == "Linux":
+            plat_name = "linux_x86_64" if platform.machine().endswith('64') else "linux_i686"
+        elif platform.system() == "Darwin":
+            plat_name = "macosx_10_9_x86_64" if platform.machine() == "x86_64" else "macosx_11_0_arm64"
+        else:
+            plat_name = "any"
+        
+        debug_print(f"Python tag: {python_tag}")
+        debug_print(f"ABI tag: {abi_tag}")
+        debug_print(f"Platform tag: {plat_name}")
+        
+        return python_tag, abi_tag, plat_name
+
 setup(
     name="audio_capture",
     version="0.1.0",
     author="hewenyu",
-    author_email="hewenyu@example.com",
+    author_email="yuebanlaosiji@outlook.com",
     description="Python bindings for audio capture library",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -96,10 +134,13 @@ setup(
     package_data=package_data,
     include_package_data=True,
     zip_safe=False,
-    python_requires=">=3.6",
+    python_requires=f">={python_major_minor}",
     install_requires=["numpy"],
+    cmdclass={
+        'bdist_wheel': BdistWheelPlatform,
+    },
     classifiers=[
-        "Programming Language :: Python :: 3",
+        f"Programming Language :: Python :: {python_major_minor}",
         "License :: OSI Approved :: MIT License",
         "Operating System :: Microsoft :: Windows",
     ],
