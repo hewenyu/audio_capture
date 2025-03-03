@@ -61,104 +61,15 @@ jobs:
         pip install *.whl
         python -c "import audio_capture; print(audio_capture.__version__)"
         
-    - name: Create ZIP archive
-      run: |
-        cd bindings/python
-        Compress-Archive -Path dist/*.whl -DestinationPath audio_capture-win-py${{ matrix.python-version }}.zip
-        
     - name: Upload wheel artifact
       uses: actions/upload-artifact@v4
       with:
         name: audio_capture-win-py${{ matrix.python-version }}
-        path: bindings/python/audio_capture-win-py${{ matrix.python-version }}.zip
+        path: bindings/python/dist/*.whl
 
-  ubuntu-latest:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-        
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential cmake
-        
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install setuptools wheel build numpy cmake
-        
-    - name: Build C++ library (Dummy for now)
-      run: |
-        echo "Linux build not yet implemented"
-        # 创建一个空的wheel包用于测试工作流
-        mkdir -p bindings/python/dist
-        touch bindings/python/dist/audio_capture-0.1.0-py3-none-linux_x86_64.whl
-        
-    - name: Create ZIP archive
-      run: |
-        cd bindings/python
-        zip -r audio_capture-linux-py${{ matrix.python-version }}.zip dist/*.whl
-        
-    - name: Upload wheel artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: audio_capture-linux-py${{ matrix.python-version }}
-        path: bindings/python/audio_capture-linux-py${{ matrix.python-version }}.zip
-
-  macOS-latest:
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-        
-    - name: Install system dependencies
-      run: |
-        brew install cmake
-        
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install setuptools wheel build numpy cmake
-        
-    - name: Build C++ library (Dummy for now)
-      run: |
-        echo "macOS build not yet implemented"
-        # 创建一个空的wheel包用于测试工作流
-        mkdir -p bindings/python/dist
-        touch bindings/python/dist/audio_capture-0.1.0-py3-none-macosx_10_9_x86_64.whl
-        
-    - name: Create ZIP archive
-      run: |
-        cd bindings/python
-        zip -r audio_capture-macos-py${{ matrix.python-version }}.zip dist/*.whl
-        
-    - name: Upload wheel artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: audio_capture-macos-py${{ matrix.python-version }}
-        path: bindings/python/audio_capture-macos-py${{ matrix.python-version }}.zip
         
   release:
-    needs: [windows, ubuntu-latest, macOS-latest]
+    needs: [windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -167,51 +78,28 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
-    - name: Get version from tag
-      id: get_version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-      
+     
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
         path: artifacts
-        merge-multiple: true
         
     - name: Display structure of downloaded files
       run: ls -R artifacts
       
     - name: Create Release
       id: create_release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v0.1.15
+      if: startsWith(github.ref, 'refs/tags/')
       with:
         name: Release ${{ steps.get_version.outputs.VERSION }}
         draft: false
         prerelease: false
         files: |
-          artifacts/audio_capture-win-py3.8.zip
-          artifacts/audio_capture-win-py3.9.zip
-          artifacts/audio_capture-win-py3.10.zip
-          artifacts/audio_capture-win-py3.11.zip
-          artifacts/audio_capture-linux-py3.8.zip
-          artifacts/audio_capture-linux-py3.9.zip
-          artifacts/audio_capture-linux-py3.10.zip
-          artifacts/audio_capture-linux-py3.11.zip
-          artifacts/audio_capture-macos-py3.8.zip
-          artifacts/audio_capture-macos-py3.9.zip
-          artifacts/audio_capture-macos-py3.10.zip
-          artifacts/audio_capture-macos-py3.11.zip
+          artifacts/**/*.whl
         body: |
-          # Audio Capture ${{ steps.get_version.outputs.VERSION }}
-          
           ## Windows Wheels
           - Python 3.8, 3.9, 3.10, 3.11 wheels for Windows (64-bit)
-          
-          ## Linux Wheels (Coming Soon)
-          - Python 3.8, 3.9, 3.10, 3.11 wheels for Linux (x86_64)
-          
-          ## macOS Wheels (Coming Soon)
-          - Python 3.8, 3.9, 3.10, 3.11 wheels for macOS (x86_64)
           
           ## Installation
           ```
@@ -219,5 +107,3 @@ jobs:
           ```
           
           Or download and install the appropriate wheel file for your platform and Python version.
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
